@@ -6,8 +6,13 @@ import { BingoCell, BingoGame, TelegramBotConfig, TelegramLog, Player, DepositRe
 import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename = typeof import.meta !== 'undefined' && import.meta.url
+  ? fileURLToPath(import.meta.url)
+  : (new Function('return __filename')());
+
+const __dirname = typeof import.meta !== 'undefined' && import.meta.url
+  ? path.dirname(__filename)
+  : (new Function('return __dirname')());
 
 const app = express();
 const PORT = 3000;
