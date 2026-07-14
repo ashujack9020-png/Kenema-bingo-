@@ -1,18 +1,9 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { BingoCell, BingoGame, TelegramBotConfig, TelegramLog, Player, DepositRequest, WithdrawRequest } from './src/types.js';
 import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
-
-const __filename = typeof import.meta !== 'undefined' && import.meta.url
-  ? fileURLToPath(import.meta.url)
-  : (new Function('return __filename')());
-
-const __dirname = typeof import.meta !== 'undefined' && import.meta.url
-  ? path.dirname(__filename)
-  : (new Function('return __dirname')());
 
 const app = express();
 const PORT = 3000;
