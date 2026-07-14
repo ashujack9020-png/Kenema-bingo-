@@ -18,6 +18,12 @@ export default function App() {
   // Admin authentication state for control panels
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
     if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const pinParam = urlParams.get('admin_pin');
+      if (pinParam === 'kenema009020') {
+        localStorage.setItem('bela_bingo_admin_auth', 'true');
+        return true;
+      }
       const host = window.location.hostname;
       // Auto-authenticate as admin if on dev environment
       if (host.includes('ais-dev-') || host.includes('localhost') || host.includes('127.0.0.1')) {
@@ -27,6 +33,16 @@ export default function App() {
     }
     return false;
   });
+
+  // Automatically set tab to 'board' if authenticated via URL param
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('admin_pin') === 'kenema009020') {
+        setActiveTab('board');
+      }
+    }
+  }, []);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [showPinModal, setShowPinModal] = useState(false);

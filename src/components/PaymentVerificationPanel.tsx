@@ -19,6 +19,8 @@ export default function PaymentVerificationPanel({ deposits, withdrawals, onRefr
   const [simName, setSimName] = useState('ፍጹም');
   const [simAmount, setSimAmount] = useState('100');
   const [simMethod, setSimMethod] = useState<'telebirr' | 'bank'>('telebirr');
+  const [simSmsText, setSimSmsText] = useState('');
+  const [simTxnId, setSimTxnId] = useState('');
   const [isSimulating, setIsSimulating] = useState(false);
 
   // Withdrawal Simulation state
@@ -98,9 +100,13 @@ export default function PaymentVerificationPanel({ deposits, withdrawals, onRefr
           firstName: simName,
           amount: Number(simAmount),
           method: simMethod,
+          smsText: simSmsText || undefined,
+          transactionId: simTxnId || undefined,
         }),
       });
       if (!res.ok) throw new Error('Simulation failed');
+      setSimSmsText('');
+      setSimTxnId('');
       onRefresh();
     } catch (err: any) {
       setError(err.message);
@@ -237,50 +243,67 @@ export default function PaymentVerificationPanel({ deposits, withdrawals, onRefr
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
+                <div className="space-y-4">
                   {pendingDeposits.map((dep) => (
-                    <div key={dep.id} className="p-4 bg-zinc-950/80 rounded-2xl border border-zinc-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                      <div className="flex items-center gap-4">
-                        <div 
-                          className="relative w-16 h-16 rounded-xl overflow-hidden border border-zinc-850 cursor-pointer group shrink-0 bg-zinc-900"
-                          onClick={() => setSelectedImage(dep.screenshotUrl)}
-                        >
-                          <img src={dep.screenshotUrl} alt="Receipt Screenshot" className="w-full h-full object-cover group-hover:scale-105 transition duration-200" referrerPolicy="no-referrer" />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                            <ImageIcon size={14} className="text-white" />
+                    <div key={dep.id} className="p-4 bg-zinc-950/80 rounded-2xl border border-zinc-800 flex flex-col gap-3">
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div 
+                            className="relative w-16 h-16 rounded-xl overflow-hidden border border-zinc-850 cursor-pointer group shrink-0 bg-zinc-900"
+                            onClick={() => setSelectedImage(dep.screenshotUrl)}
+                          >
+                            <img src={dep.screenshotUrl} alt="Receipt Screenshot" className="w-full h-full object-cover group-hover:scale-105 transition duration-200" referrerPolicy="no-referrer" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                              <ImageIcon size={14} className="text-white" />
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-sm font-bold text-zinc-200 flex items-center gap-1.5">
+                              {dep.firstName}
+                              <span className="text-xs text-zinc-500 font-mono">@{dep.username}</span>
+                            </div>
+                            <div className="text-xs text-zinc-400 mt-0.5">
+                              የላከው፡ <span className="font-mono text-emerald-400 font-bold">{dep.amount} Birr</span> • ዘዴ፡ <b className="text-zinc-300 capitalize">{dep.method === 'telebirr' ? '📱 Telebirr' : '🏦 CBE Bank'}</b>
+                            </div>
+                            {dep.transactionId && (
+                              <div className="text-xs mt-1">
+                                <span className="text-zinc-500 font-semibold">Txn ID:</span> <code className="text-amber-400 font-mono bg-zinc-900 px-1.5 py-0.5 rounded text-[11px]">{dep.transactionId}</code>
+                              </div>
+                            )}
+                            <div className="text-[10px] text-zinc-650 mt-1">
+                              የደረሰበት ሰዓት፡ {new Date(dep.timestamp).toLocaleTimeString()}
+                            </div>
                           </div>
                         </div>
 
-                        <div>
-                          <div className="text-sm font-bold text-zinc-200 flex items-center gap-1.5">
-                            {dep.firstName}
-                            <span className="text-xs text-zinc-500 font-mono">@{dep.username}</span>
-                          </div>
-                          <div className="text-xs text-zinc-400 mt-0.5">
-                            የላከው፡ <span className="font-mono text-emerald-400 font-bold">{dep.amount} Birr</span> • ዘዴ፡ <b className="text-zinc-300 capitalize">{dep.method === 'telebirr' ? '📱 Telebirr' : '🏦 CBE Bank'}</b>
-                          </div>
-                          <div className="text-[10px] text-zinc-600 mt-1">
-                            የደረሰበት ሰዓት፡ {new Date(dep.timestamp).toLocaleTimeString()}
-                          </div>
+                        <div className="flex items-center gap-2 w-full md:w-auto">
+                          <button
+                            onClick={() => handleReject(dep.id)}
+                            disabled={isProcessing !== null}
+                            className="flex-1 md:flex-none py-2 px-3.5 bg-red-950/20 hover:bg-red-950/40 border border-red-900/40 hover:border-red-800 text-red-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                          >
+                            <X size={14} /> ውድቅ አድርግ (Reject)
+                          </button>
+                          <button
+                            onClick={() => handleApprove(dep.id)}
+                            disabled={isProcessing !== null}
+                            className="flex-1 md:flex-none py-2 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-500/10"
+                          >
+                            <Check size={14} strokeWidth={3} /> የተቀበልኩ (Approve)
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 w-full md:w-auto">
-                        <button
-                          onClick={() => handleReject(dep.id)}
-                          disabled={isProcessing !== null}
-                          className="flex-1 md:flex-none py-2 px-3.5 bg-red-950/20 hover:bg-red-950/40 border border-red-900/40 hover:border-red-800 text-red-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition"
-                        >
-                          <X size={14} /> ውድቅ አድርግ (Reject)
-                        </button>
-                        <button
-                          onClick={() => handleApprove(dep.id)}
-                          disabled={isProcessing !== null}
-                          className="flex-1 md:flex-none py-2 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-500/10"
-                        >
-                          <Check size={14} strokeWidth={3} /> የተቀበልኩ (Approve)
-                        </button>
-                      </div>
+                      {/* Display SMS Receipt Text */}
+                      {dep.smsText && (
+                        <div className="bg-zinc-900/60 rounded-xl p-3 border border-zinc-850 text-xs text-zinc-300 leading-relaxed font-sans">
+                          <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                            <span>💬 የላኩት SMS ደረሰኝ (SMS Text / Reference)</span>
+                          </div>
+                          <p className="whitespace-pre-wrap select-all font-mono text-[11px] bg-zinc-950/80 p-2 rounded-lg border border-zinc-800 text-zinc-300">{dep.smsText}</p>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -463,12 +486,34 @@ export default function PaymentVerificationPanel({ deposits, withdrawals, onRefr
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-zinc-500 mb-1">የግብይት ቁጥር (Transaction ID - Optional):</label>
+                  <input
+                    type="text"
+                    value={simTxnId}
+                    onChange={(e) => setSimTxnId(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-zinc-200 focus:outline-none focus:border-emerald-500 font-mono"
+                    placeholder="FT24195ABCDE ወይም TXN..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-500 mb-1">የላኩት የባንክ / SMS ደረሰኝ ጽሑፍ (SMS Text receipt):</label>
+                  <textarea
+                    value={simSmsText}
+                    onChange={(e) => setSimSmsText(e.target.value)}
+                    rows={3}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2 px-3 text-zinc-200 focus:outline-none focus:border-emerald-500 font-sans text-xs"
+                    placeholder="ከባንክ የደረሰዎትን አረጋጋጭ የጽሑፍ መልዕክት (SMS) እዚህ ይቅዱና ይለጥፉ..."
+                  />
+                </div>
+
                 <button
                   type="submit"
                   disabled={isSimulating}
                   className="w-full mt-2 py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-emerald-400 font-semibold border border-zinc-700/80 rounded-xl flex items-center justify-center gap-1.5 transition"
                 >
-                  <Send size={13} /> {isSimulating ? 'በማስመሰል ላይ...' : 'የደረሰኝ ፎቶ ላክ (Upload)'}
+                  <Send size={13} /> {isSimulating ? 'በማስመሰል ላይ...' : 'የደረሰኝ ፎቶና SMS ላክ (Upload Deposit)'}
                 </button>
               </form>
             </>

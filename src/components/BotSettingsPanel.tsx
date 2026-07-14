@@ -16,6 +16,7 @@ export default function BotSettingsPanel({ settings, onRefresh }: BotSettingsPan
   const [welcomeBonus, setWelcomeBonus] = useState(settings?.welcomeBonus ?? 10);
   const [referralBonus, setReferralBonus] = useState(settings?.referralBonus ?? 10);
   const [forceSharedPreUrl, setForceSharedPreUrl] = useState(settings?.forceSharedPreUrl ?? true);
+  const [botMode, setBotMode] = useState<'polling' | 'webhook' | 'disabled'>(settings?.botMode || 'polling');
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -32,6 +33,7 @@ export default function BotSettingsPanel({ settings, onRefresh }: BotSettingsPan
       setWelcomeBonus(settings.welcomeBonus);
       setReferralBonus(settings.referralBonus);
       setForceSharedPreUrl(settings.forceSharedPreUrl ?? true);
+      setBotMode(settings.botMode || 'polling');
     }
   }, [settings]);
 
@@ -54,6 +56,7 @@ export default function BotSettingsPanel({ settings, onRefresh }: BotSettingsPan
           welcomeBonus: Number(welcomeBonus),
           referralBonus: Number(referralBonus),
           forceSharedPreUrl,
+          botMode,
         }),
       });
 
@@ -278,6 +281,54 @@ export default function BotSettingsPanel({ settings, onRefresh }: BotSettingsPan
           <p className="text-[10px] text-zinc-500 leading-normal">
             ይህ ሲበራ ተጫዋቾች በቴሌግራም ቦት ላይ <b>🎮 Play</b> ሲጫኑ <b>ያለ ምንም የጉግል አካውንት (Google Account)</b> በቀጥታ ወደ ጨዋታው ይገባሉ! (ይህን ለማብራት መጀመሪያ AI Studio ላይ <b>'Share'</b> ያድርጉት)።
           </p>
+        </div>
+
+        {/* Section 5: Telegram Bot Connection Mode */}
+        <div className="p-4 bg-zinc-950 border border-zinc-850 rounded-2xl space-y-3">
+          <h3 className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+            <Settings2 size={13} className="text-amber-400" /> የቴሌግራም ቦት ግንኙነት ዘዴ (Bot Connection Mode)
+          </h3>
+          <p className="text-[10px] text-zinc-500 leading-normal">
+            በአንድ ጊዜ አንድ መተግበሪያ ብቻ ከቴሌግራም ጋር መገናኘት ይችላል (Conflict ለማስቀረት)። በ Render ላይ ሲጭኑ ወደ <b>Webhook</b> ይቀይሩት፤ በ AI Studio ሲሞክሩ ወደ <b>Long Polling</b> ያድርጉት።
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => setBotMode('polling')}
+              className={`py-2 px-3 text-xs font-bold rounded-xl border transition flex flex-col items-center gap-1 ${
+                botMode === 'polling'
+                  ? 'bg-amber-500/10 border-amber-500 text-amber-400 font-bold'
+                  : 'bg-[#0a0a0c] border-zinc-800 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <span className="text-xs">Long Polling</span>
+              <span className="text-[9px] opacity-70">AI Studio</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setBotMode('webhook')}
+              className={`py-2 px-3 text-xs font-bold rounded-xl border transition flex flex-col items-center gap-1 ${
+                botMode === 'webhook'
+                  ? 'bg-sky-500/10 border-sky-500 text-sky-400 font-bold'
+                  : 'bg-[#0a0a0c] border-zinc-800 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <span className="text-xs">Webhook (Render)</span>
+              <span className="text-[9px] opacity-70">ለቀጥታ ስርጭት</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setBotMode('disabled')}
+              className={`py-2 px-3 text-xs font-bold rounded-xl border transition flex flex-col items-center gap-1 ${
+                botMode === 'disabled'
+                  ? 'bg-red-500/10 border-red-500 text-red-400 font-bold'
+                  : 'bg-[#0a0a0c] border-zinc-800 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <span className="text-xs">Disabled</span>
+              <span className="text-[9px] opacity-70">ቦት ግንኙነት አጥፋ</span>
+            </button>
+          </div>
         </div>
 
         {/* Error Messages */}

@@ -36,6 +36,7 @@ export interface BingoGame {
   lobbyTimeLeft?: number; // Automated timer for card selection in seconds
   gameTimeLeft?: number; // Automated timer for the playing phase in seconds
   nextGameCountdown?: number; // Countdown before starting the next game
+  isOvertime?: boolean; // Overtime mode for 25+ players
 }
 
 export interface TelegramBotConfig {
@@ -61,6 +62,8 @@ export interface DepositRequest {
   amount: number;
   method: 'telebirr' | 'bank';
   screenshotUrl: string;
+  smsText?: string;
+  transactionId?: string;
   timestamp: number;
   status: 'pending' | 'approved' | 'rejected';
 }
@@ -102,6 +105,7 @@ export interface BotSettings {
   welcomeBonus: number;
   referralBonus: number;
   forceSharedPreUrl?: boolean;
+  botMode?: 'polling' | 'webhook' | 'disabled';
 }
 
 export interface AppState {

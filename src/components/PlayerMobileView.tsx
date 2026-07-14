@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Smartphone, User, Coins, RefreshCw, LogOut, Trophy, 
-  Wifi, Battery, ShieldAlert, Sparkles, CheckCircle2, Volume2, VolumeX 
+  Wifi, Battery, ShieldAlert, Sparkles, CheckCircle2, Volume2, VolumeX,
+  Settings, Save, Plus, Edit, X
 } from 'lucide-react';
 import { BingoGame, Player, PlayerProfile } from '../types.js';
 
@@ -15,13 +16,46 @@ interface PlayerMobileViewProps {
 }
 
 export default function PlayerMobileView({ game, onRefresh, profiles, isTelegramWebApp, onUnlockAdmin }: PlayerMobileViewProps) {
-  // Preset profiles for simulation
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('sim_fitsum_a');
+  // Preset profiles for simulation with persistent local storage
+  const [selectedProfileId, setSelectedProfileId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('bela_bingo_selected_profile_id');
+      if (saved) return saved;
+    }
+    return 'sim_fitsum_a';
+  });
   const [customName, setCustomName] = useState('');
   const [customUsername, setCustomUsername] = useState('');
   const [customBalance, setCustomBalance] = useState('500');
   const [showCustomForm, setShowCustomForm] = useState(false);
-  const [customProfiles, setCustomProfiles] = useState<any[]>([]);
+  const [customProfiles, setCustomProfiles] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('bela_bingo_custom_profiles');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
+
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Sync profile selections and custom profiles persistently in background
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bela_bingo_selected_profile_id', selectedProfileId);
+    }
+  }, [selectedProfileId]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bela_bingo_custom_profiles', JSON.stringify(customProfiles));
+    }
+  }, [customProfiles]);
 
   // Local state for selected stake (bet) on the select screen
   const [selectedStake, setSelectedStake] = useState<number>(20);
@@ -35,6 +69,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
   const [selectedCardNumber, setSelectedCardNumber] = useState<number | null>(null);
   const [cardSearch, setCardSearch] = useState<string>('');
   const [cardCategory, setCardCategory] = useState<string>('1-40');
+  const [isAddingAnotherCard, setIsAddingAnotherCard] = useState<boolean>(false);
 
   // Client-side exact match of the seed-based card generator for beautiful real-time previewing
   const seededRandom = (seed: number) => {
@@ -140,7 +175,17 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
   }, []);
 
   // Check if current simulated profile is joined in the active lobby/game
-  const activePlayerInGame = game.players.find(p => p.id === activeProfile.id);
+  const activePlayersInGame = game.players.filter(p => p.id === activeProfile.id);
+  const [activeCardIndex, setActiveCardIndex] = useState<number>(0);
+
+  // Auto-reset active card index if it gets out of bounds
+  useEffect(() => {
+    if (activeCardIndex >= activePlayersInGame.length && activeCardIndex !== 0) {
+      setActiveCardIndex(0);
+    }
+  }, [activePlayersInGame.length, activeCardIndex]);
+
+  const activePlayerInGame = activePlayersInGame[activeCardIndex] || null;
 
   // Clear status messages after a delay
   useEffect(() => {
@@ -271,6 +316,11 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
 
       setStatusMessage({ text: `🎉 ${activeProfile.firstName} በ ${selectedStake} Birr በተሳካ ሁኔታ ተመዝግቧል! (ካርድ #${selectedCardNumber})`, type: 'success' });
       onRefresh();
+      // Select the newly added card (it will be at the end of the players list)
+      setTimeout(() => {
+        setActiveCardIndex(prev => prev + 1);
+      }, 500);
+      setIsAddingAnotherCard(false);
       // Reset wizard steps for next time they reset or leave the game
       setFlowStep('bet_select');
       setSelectedCardNumber(null);
@@ -313,10 +363,38 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
     }
   };
 
-  // 3. Leave Game
+  // 3. Leave Game (Specific active card)
   const handleLeaveGame = async () => {
     if (!activePlayerInGame) return;
     setLoadingAction('leaving');
+    try {
+      const res = await fetch('/api/game/simulate-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: activeProfile.username,
+          firstName: activeProfile.firstName,
+          text: `/leave ${activePlayerInGame.cardNumber}`,
+          userId: activeProfile.id
+        })
+      });
+      if (!res.ok) throw new Error('ጨዋታውን መልቀቅ አልተቻለም');
+
+      setStatusMessage({ text: `👋 ከካርድ ቁጥር #${activePlayerInGame.cardNumber} ወጥተዋል፣ መወራረቢያዎ ተመላሽ ሆኗል።`, type: 'info' });
+      // Reset active card index to 0
+      setActiveCardIndex(0);
+      onRefresh();
+    } catch (err: any) {
+      setStatusMessage({ text: `❌ ስህተት፡ ${err.message}`, type: 'error' });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // 4. Leave All Games
+  const handleLeaveAll = async () => {
+    if (activePlayersInGame.length === 0) return;
+    setLoadingAction('leaving-all');
     try {
       const res = await fetch('/api/game/simulate-command', {
         method: 'POST',
@@ -330,7 +408,8 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
       });
       if (!res.ok) throw new Error('ጨዋታውን መልቀቅ አልተቻለም');
 
-      setStatusMessage({ text: '👋 ከቢንጎ ጨዋታው ወጥተዋል፣ መወራረቢያዎ ተመላሽ ሆኗል።', type: 'info' });
+      setStatusMessage({ text: '👋 ከሁሉም ቢንጎ ካርታዎችዎ ወጥተዋል፣ መወራረቢያዎ ተመላሽ ሆኗል።', type: 'info' });
+      setActiveCardIndex(0);
       onRefresh();
     } catch (err: any) {
       setStatusMessage({ text: `❌ ስህተት፡ ${err.message}`, type: 'error' });
@@ -369,163 +448,206 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
     }
   };
 
+  // Premium Gaming Chip styling for each stake amount (Optimized for gorgeous light-mode contrasts)
+  const getChipStyle = (amt: number) => {
+    switch(amt) {
+      case 10: return { bg: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100', chosen: 'bg-emerald-500 border-emerald-400 text-white shadow-lg font-black scale-105' };
+      case 20: return { bg: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100', chosen: 'bg-blue-500 border-blue-400 text-white shadow-lg font-black scale-105' };
+      case 30: return { bg: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100', chosen: 'bg-amber-500 border-amber-400 text-white shadow-lg font-black scale-105' };
+      case 50: return { bg: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100', chosen: 'bg-indigo-500 border-indigo-400 text-white shadow-lg font-black scale-105' };
+      case 100: return { bg: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100', chosen: 'bg-purple-500 border-purple-400 text-white shadow-lg font-black scale-105' };
+      case 200: return { bg: 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100', chosen: 'bg-rose-500 border-rose-400 text-white shadow-lg font-black scale-105' };
+      case 500: return { bg: 'bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100', chosen: 'bg-cyan-500 border-cyan-400 text-white shadow-lg font-black scale-105' };
+      case 1000: return { bg: 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100', chosen: 'bg-orange-500 border-orange-400 text-white shadow-lg font-black scale-105' };
+      default: return { bg: 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200', chosen: 'bg-slate-800 border-slate-700 text-white shadow-lg font-black scale-105' };
+    }
+  };
+
+  // Uniform beautiful card selector styling - TAKEN CARDS ARE FULLY PAINTED IN RED COLOR
+  const getCardBgColor = (num: number, isSelected: boolean, isTaken: boolean) => {
+    if (isSelected) {
+      return 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-emerald-400 font-black shadow-[0_0_12px_rgba(16,185,129,0.4)] scale-110 z-10';
+    }
+    if (isTaken) {
+      // FULLY RED CARD BACKGROUND AS REQUESTED BY USER (የተያዙ ካርዶች ሙሉ ለሙሉ በቀይ ከለር ይቀቡ)
+      return 'bg-red-600 border-red-500 text-white font-black shadow-md cursor-not-allowed';
+    }
+    
+    // Beautiful clean white-adjacent button for gorgeous contrast and consistency
+    return 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50 hover:border-slate-400 shadow-sm transition-all duration-200';
+  };
+
+  // Uniform custom styling for play squares matching the card selector exactly
+  const getPlaySquareStyle = (cell: any, rIdx: number, cIdx: number) => {
+    const isFree = rIdx === 2 && cIdx === 2;
+    const marked = cell.marked;
+
+    if (isFree) {
+      return 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white font-black shadow-[0_0_12px_rgba(16,185,129,0.4)] border-emerald-400 scale-102 ring-2 ring-emerald-300/40 animate-pulse';
+    }
+
+    if (marked) {
+      // Beautiful uniform emerald green matching chip color
+      return 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400 text-white font-black ring-2 ring-emerald-300/40 shadow-md scale-102';
+    } else {
+      // Uniform gorgeous light mode squares for high contrast and extreme readability
+      return 'bg-white border-slate-200 text-slate-800 font-bold hover:bg-slate-50 hover:border-slate-300 transition-all duration-150 shadow-sm';
+    }
+  };
+
   // Calculate dynamic "Derash" (80% of stakes or customized)
   const derashPrize = game.status !== 'idle' 
     ? (game.players.length * game.betAmount * 0.8) 
     : 40;
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+    <div className="flex justify-center items-center w-full min-h-screen py-4 px-4 bg-[#f8fafc] bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.03),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.03),transparent_45%)] relative select-none overflow-hidden">
       
-      {/* LEFT COLUMN: PLAYER PROFILE CONTROLLER (Column span 4) */}
-      <div className="xl:col-span-4 flex flex-col gap-6">
-        <div className="bg-[#111114] border border-zinc-800 rounded-3xl p-6 shadow-xl">
-          <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider mb-4 flex items-center gap-2">
-            👤 የሞባይል ተጫዋች መምረጫ
-          </h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-500 mb-2">ለማስመሰል የሚፈልጉትን ተጫዋች ይምረጡ፡</label>
-              <select
-                value={selectedProfileId}
-                onChange={(e) => {
-                  setSelectedProfileId(e.target.value);
-                  setStatusMessage(null);
-                }}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-sky-500 text-zinc-200 font-sans"
-              >
-                {allProfiles.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} (@{p.username}) — ባላንስ: {p.balance} Birr
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Register New Player Toggle */}
-            <div>
-              {!showCustomForm ? (
-                <button
-                  onClick={() => setShowCustomForm(true)}
-                  className="text-xs text-sky-400 hover:text-sky-300 font-bold transition flex items-center gap-1"
-                >
-                  ➕ አዲስ ተጫዋች ፍጠር (Create Custom Player)
-                </button>
-              ) : (
-                <form onSubmit={handleCreateCustom} className="mt-3 p-4 bg-[#0a0a0c] border border-zinc-800 rounded-2xl space-y-3">
-                  <h4 className="text-xs font-bold text-zinc-300">አዲስ ተጫዋች መረጃ</h4>
-                  
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="ሙሉ ስም (ለምሳሌ፡ አስቴር)"
-                      value={customName}
-                      onChange={e => setCustomName(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-sky-500 text-zinc-200"
-                    />
-                    <input
-                      type="text"
-                      required
-                      placeholder="የቴሌግራም ዩዘርኔም (Username)"
-                      value={customUsername}
-                      onChange={e => setCustomUsername(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-sky-500 text-zinc-200"
-                    />
-                    <input
-                      type="number"
-                      required
-                      placeholder="መጀመሪያ ባላንስ (Birr)"
-                      value={customBalance}
-                      onChange={e => setCustomBalance(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-sky-500 text-zinc-200"
-                    />
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="submit"
-                      className="px-3 py-1.5 bg-sky-500 hover:bg-sky-600 rounded-lg text-slate-950 text-xs font-bold transition"
-                    >
-                      ጨምር
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomForm(false)}
-                      className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 rounded-lg text-zinc-400 text-xs transition"
-                    >
-                      ሰርዝ
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          </div>
+      {/* Decorative ambient background lights for a premium professional look */}
+      <div className="absolute top-1/4 left-1/10 w-80 h-80 rounded-full bg-emerald-500/3 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/10 w-96 h-96 rounded-full bg-sky-500/3 blur-[140px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-indigo-500/2 blur-[180px] pointer-events-none" />
+      
+      {/* Confetti Celebration overlay */}
+      {confettiActive && (
+        <div className="absolute pointer-events-none z-50 animate-bounce text-center text-3xl md:text-4xl text-amber-500 font-black">
+          🎉✨🏆 BINGO! WINNER! 🏆✨🎉
         </div>
+      )}
 
-        {/* Dynamic Status / Feedback Alert widget */}
-        <AnimatePresence mode="wait">
-          {statusMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className={`p-4 rounded-3xl border flex items-start gap-3 ${
-                statusMessage.type === 'success' 
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-                  : statusMessage.type === 'error'
-                  ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                  : 'bg-sky-500/10 border-sky-500/30 text-sky-400'
-              }`}
-            >
-              <ShieldAlert className="shrink-0 mt-0.5" size={18} />
-              <div className="text-xs font-semibold leading-relaxed">
-                {statusMessage.text}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Quick Help Guide */}
-        <div className="bg-[#111114] border border-zinc-800 p-5 rounded-3xl">
-          <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">💡 የተጫዋች ስማርትፎን ሲሙሌተር መመሪያ</h4>
-          <p className="text-xs text-zinc-500 leading-relaxed space-y-1">
-            ይህ ሲሙሌተር ተጫዋቾች በሞባይል ስልካቸው የሚመለከቱትን እውነተኛውን የጨዋታ ገጽታ <b>(Bela Bingo Player Screen)</b> ያሳያል።
-          </p>
-          <ul className="text-xs text-zinc-400 list-disc pl-4 mt-2 space-y-1.5">
-            <li>ከተመራጭ ተጫዋቾች አንዱን ይምረጡ ወይም አዲስ ይፍጠሩ።</li>
-            <li>ተጫዋቹ ጨዋታውን ካልተቀላቀለ የመወራረቢያ ብር (10, 20, 30...) መምረጫ ይመጣል።</li>
-            <li>ብር መርጠው <b>"ተቀላቀል"</b> ሲሉ ወደ ቀጥታ ጨዋታው ይሄዳሉ!</li>
-            <li>በጨዋታው ውስጥ እጣ ሲወጣ በራሱ ምልክት ይደረጋል፣ መስመር ሲሞላላችሁ <b>"Bingo"</b> የሚለውን ትልቅ የብርቱካን ቁልፍ መጫን ትችላላችሁ!</li>
-          </ul>
-        </div>
-      </div>
-
-      {/* RIGHT COLUMN: SMARTPHONE FRAME AND PLAYER WORKSPACE (Column span 8) */}
-      <div className="xl:col-span-8 flex justify-center">
-        
-        {/* Confetti Celebration overlay */}
-        {confettiActive && (
-          <div className="absolute pointer-events-none z-50 animate-bounce text-center text-4xl">
-            🎉✨🏆 BINGO! WINNER! 🏆✨🎉
-          </div>
-        )}
-
-        {/* Smartphone Casing container */}
-        <div className="relative mx-auto w-full max-w-[420px] bg-[#0c1219] border-[12px] border-[#181d24] rounded-[52px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col min-h-[780px]">
+      {/* Smartphone Casing container (Premium metallic silver design) */}
+      <div className="relative mx-auto w-full max-w-[420px] bg-slate-200 border-[12px] border-slate-300 rounded-[52px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] overflow-hidden flex flex-col min-h-[780px]">
           
           {/* Smartphone Ear Speaker & Camera Notch */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-32 bg-[#181d24] rounded-b-2xl z-50 flex items-center justify-center gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-zinc-800" />
-            <div className="w-12 h-1 bg-zinc-700 rounded-full" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-32 bg-slate-300 rounded-b-2xl z-50 flex items-center justify-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+            <div className="w-12 h-1 bg-slate-400 rounded-full" />
           </div>
 
-          {/* Smartphone Screen Inner content */}
-          <div className="flex-1 flex flex-col text-white pt-6 relative select-none font-sans bg-[#081018]">
+          {/* Smartphone Screen Inner content (Polished white-adjacent canvas) */}
+          <div className="flex-1 flex flex-col text-slate-800 pt-6 relative select-none font-sans bg-[#f8fafc]">
             
+            {/* PROFILES MANAGER / SIMULATOR OVERLAY DIALOG */}
+            <AnimatePresence>
+              {showProfileModal && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 100 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 100 }}
+                  className="absolute inset-0 bg-white/98 backdrop-blur-md z-50 flex flex-col p-5 justify-between font-sans text-slate-800"
+                >
+                  <div className="space-y-4">
+                    {/* Modal Header */}
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                      <div className="flex items-center gap-2">
+                        <User size={18} className="text-orange-500" />
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">የተጫዋች መገለጫ (Profiles)</h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowProfileModal(false)}
+                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {/* Switch profile section */}
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">ተጫዋች ይምረጡ (Select Profile)</label>
+                      <div className="grid grid-cols-1 gap-2 max-h-[180px] overflow-y-auto custom-scrollbar">
+                        {allProfiles.map((p) => {
+                          const isSelected = p.id === selectedProfileId;
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedProfileId(p.id);
+                                setShowProfileModal(false);
+                              }}
+                              className={`p-3 rounded-xl border text-left flex items-center justify-between transition ${
+                                isSelected
+                                  ? 'bg-orange-500/10 border-orange-500/40 text-white font-black'
+                                  : 'bg-zinc-900/60 border-zinc-800/80 hover:bg-zinc-850 hover:border-zinc-700 text-zinc-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black uppercase ${
+                                  isSelected ? 'bg-orange-500 text-slate-950' : 'bg-zinc-850 text-zinc-400'
+                                }`}>
+                                  {p.firstName.charAt(0)}
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold">{p.firstName}</div>
+                                  <div className="text-[9px] text-zinc-500 font-mono">@{p.username}</div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-xs font-mono font-bold text-emerald-400">{p.balance.toFixed(2)} Birr</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Create custom profile section */}
+                    <div className="border-t border-zinc-800/80 pt-3">
+                      <label className="block text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider mb-2">አዲስ ተጫዋች ፍጠር (Create New Player)</label>
+                      
+                      <form onSubmit={handleCreateCustom} className="space-y-2">
+                        <input
+                          type="text"
+                          required
+                          placeholder="ሙሉ ስም (ለምሳሌ፡ አስቴር)"
+                          value={customName}
+                          onChange={e => setCustomName(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            required
+                            placeholder="የቴሌግራም ዩዘር"
+                            value={customUsername}
+                            onChange={e => setCustomUsername(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium"
+                          />
+                          <input
+                            type="number"
+                            required
+                            placeholder="ባላንስ (Birr)"
+                            value={customBalance}
+                            onChange={e => setCustomBalance(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium font-mono"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-black rounded-xl transition shadow-md shadow-orange-500/10 flex items-center justify-center gap-1"
+                        >
+                          <Plus size={12} /> ተጫዋች ፍጠር (Add Player)
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowProfileModal(false)}
+                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl transition"
+                    >
+                      ተመለስ (Close)
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Top Stat/Status Bar */}
-            <div className="px-5 py-2 flex justify-between items-center text-[10px] text-zinc-500 font-semibold border-b border-[#141b24]">
+            <div className="px-5 py-2 flex justify-between items-center text-[10px] text-slate-500 font-semibold border-b border-slate-200 bg-white">
               <span 
                 className={`font-mono select-none ${onUnlockAdmin ? 'cursor-pointer active:opacity-60 transition-opacity' : ''}`}
                 onClick={onUnlockAdmin}
@@ -574,20 +696,114 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
             </div>
 
             {/* SCREEN CONDITIONAL ROUTER */}
-            {!activePlayerInGame ? (
+            {(!activePlayerInGame || isAddingAnotherCard) ? (
               /* MULTI-STEP PRE-GAME WIZARD FLOW (User requested) */
-              <div className="flex-1 flex flex-col justify-between bg-gradient-to-b from-[#081018] to-[#040810] overflow-y-auto custom-scrollbar">
+              <div className="flex-1 flex flex-col justify-between bg-gradient-to-b from-[#f8fafc] to-[#f1f5f9] overflow-y-auto custom-scrollbar">
                 
                 {/* 1. Header Logo (Consistent across all pre-game screens) */}
-                <div className="text-center py-4 shrink-0 border-b border-[#141b24] bg-[#081018]/80 backdrop-blur-md sticky top-0 z-20">
-                  <div className="flex items-center justify-center gap-1 text-2xl font-black tracking-tight text-white uppercase">
-                    <span className="w-8 h-8 bg-orange-500 text-slate-950 rounded-full flex items-center justify-center font-extrabold text-lg shadow-lg shadow-orange-500/20 mr-1">b</span>
+                <div className="text-center py-4 shrink-0 border-b border-slate-200 bg-white/90 backdrop-blur-md sticky top-0 z-20">
+                  <div className="flex items-center justify-center gap-1 text-2xl font-black tracking-tight text-slate-800 uppercase">
+                    <span className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center font-extrabold text-lg shadow-lg shadow-orange-500/20 mr-1">b</span>
                     bela bingo / ቤላ ቢንጎ
                   </div>
-                  <p className="text-[9px] text-zinc-500 tracking-wider uppercase mt-0.5">Ethiopian Mobile Bingo App</p>
+                  <p className="text-[9px] text-slate-500 tracking-wider uppercase mt-0.5">Ethiopian Mobile Bingo App</p>
+                  
+                  {isAddingAnotherCard && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingAnotherCard(false)}
+                      className="mt-2.5 px-3.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-full text-[10px] font-extrabold transition-all inline-flex items-center gap-1 border border-red-200 shadow-sm"
+                    >
+                      ✕ ወደ ጨዋታው ተመለስ (Back to Game)
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex-1 flex flex-col p-5 justify-between gap-4">
+                  
+                  {/* Status Banner inside phone screen */}
+                  <AnimatePresence mode="wait">
+                    {statusMessage && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -5 }}
+                        className={`p-3 rounded-2xl border text-[10.5px] leading-relaxed font-bold shadow-lg flex items-start gap-2 shrink-0 ${
+                          statusMessage.type === 'success' 
+                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                            : statusMessage.type === 'error'
+                            ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                            : 'bg-indigo-500/15 border-indigo-500/30 text-indigo-400'
+                        }`}
+                      >
+                        <ShieldAlert className="shrink-0 mt-0.5 text-orange-400" size={13} />
+                        <div className="flex-1">
+                          {statusMessage.text}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                   {/* Active Game / Countdown Banner warn if game is in progress */}
+                  {game.status === 'playing' && (
+                    game.isOvertime ? (
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-[10px] text-amber-300 flex items-start gap-2 shrink-0 animate-pulse">
+                        <span className="text-xs">⚡</span>
+                        <div className="flex-1">
+                          <div className="font-extrabold text-amber-400 text-xs">ተጨማሪ እጣ! (Overtime Mode Active!)</div>
+                          <p className="text-zinc-400 mt-0.5 leading-relaxed">
+                            ከ 25 በላይ ካርዶች በመያዛቸው ምክንያት አሸናፊ እስኪገኝ ድረስ እጣ ማውጣቱ ይቀጥላል! 🎰
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-purple-500/10 border border-purple-500/25 rounded-2xl p-3 text-[10px] text-purple-300 flex items-start gap-2 shrink-0 animate-pulse">
+                        <span className="text-xs">🎮</span>
+                        <div className="flex-1">
+                          <div className="font-extrabold text-purple-400 text-xs">ጨዋታ በመካሄድ ላይ ነው!</div>
+                          <p className="text-zinc-400 mt-0.5 leading-relaxed">
+                            የአሁኑ ዙር ለመጠናቀቅ <b>{game.gameTimeLeft || 90} ሰከንድ</b> ቀረው። ምዝገባው እንደተጠናቀቀ አዲስ ጨዋታ በራስ-ሰር ይጀምራል!
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  )}
+
+                  {game.status === 'finished' && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-3 text-[10px] text-emerald-300 flex items-start gap-2 shrink-0">
+                      <span className="text-xs">🏆</span>
+                      <div className="flex-1">
+                        <div className="font-extrabold text-emerald-400 text-xs">ጨዋታ ተጠናቋል!</div>
+                        <p className="text-zinc-400 mt-0.5 leading-relaxed">
+                          አዲሱ ዙር ለመጀመር <b>{game.nextGameCountdown || 8} ሰከንድ</b> ይቀረዋል። እባክዎን ይጠብቁ...
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Elegant Active Profile HUD */}
+                  <div className="bg-[#0b1420]/80 border border-[#152336] rounded-2xl p-3 flex items-center justify-between shrink-0 select-none">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 text-orange-400 border border-orange-500/20 flex items-center justify-center font-black text-sm uppercase">
+                        {activeProfile.firstName.charAt(0)}
+                      </div>
+                      <div>
+                        <span className="text-[8px] text-zinc-500 block uppercase font-extrabold tracking-wider">ተጫዋች (Active Profile)</span>
+                        <div className="flex items-center gap-1.5 -mt-0.5">
+                          <span className="text-xs font-black text-white">{activeProfile.firstName}</span>
+                          <span className="text-[9px] text-zinc-400 font-mono">@{activeProfile.username}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setShowProfileModal(true)}
+                      className="text-[9px] font-black bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 px-2.5 py-1.5 rounded-xl transition-all"
+                    >
+                      ቀይር (Switch)
+                    </button>
+                  </div>
                   
                   {/* STEP 1: WELCOME SCREEN - RE-DESIGNED AS HIGH-FIDELITY BEST BINGO LOBBY DASHBOARD */}
                   {flowStep === 'welcome' && (() => {
@@ -831,6 +1047,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                           {[10, 20, 30, 50, 100, 200, 500, 1000].map((amt) => {
                             const affordable = activeProfile.balance >= amt;
                             const isChosen = selectedStake === amt;
+                            const chip = getChipStyle(amt);
                             return (
                               <button
                                 key={amt}
@@ -839,9 +1056,9 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                                 onClick={() => setSelectedStake(amt)}
                                 className={`py-3 rounded-2xl border font-mono text-xs font-bold transition flex flex-col items-center justify-center gap-0.5 relative ${
                                   isChosen
-                                    ? 'bg-[#ed8936] text-white border-orange-400 shadow-lg shadow-orange-500/20 scale-102 font-black'
+                                    ? chip.chosen
                                     : affordable
-                                    ? 'bg-[#111923] border-zinc-800 text-zinc-300 hover:bg-[#14202d]'
+                                    ? chip.bg
                                     : 'bg-zinc-950/40 border-zinc-950 text-zinc-600 cursor-not-allowed'
                                 }`}
                               >
@@ -932,11 +1149,6 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                               const num = parseInt(val, 10);
                               if (!isNaN(num) && num >= 1 && num <= 400) {
                                 setSelectedCardNumber(num);
-                                // Set category range to contain the searched number
-                                const catIndex = Math.floor((num - 1) / 40);
-                                const start = catIndex * 40 + 1;
-                                const end = start + 39;
-                                setCardCategory(`${start}-${end}`);
                               }
                             }}
                             className="flex-1 bg-[#101721] border border-[#1a2b3e] rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-orange-500 text-zinc-200 font-sans"
@@ -954,11 +1166,6 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                                 const randomCard = available[Math.floor(Math.random() * available.length)];
                                 setSelectedCardNumber(randomCard);
                                 setCardSearch(randomCard.toString());
-                                // Update category view
-                                const catIndex = Math.floor((randomCard - 1) / 40);
-                                const start = catIndex * 40 + 1;
-                                const end = start + 39;
-                                setCardCategory(`${start}-${end}`);
                               }
                             }}
                             className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 rounded-xl px-3 py-2 text-xs font-bold transition shrink-0 flex items-center gap-1"
@@ -967,37 +1174,10 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                           </button>
                         </div>
 
-                        {/* Category Selector Rows (Ranges of 40 cards to display at once) */}
-                        <div className="flex gap-1 overflow-x-auto pb-1.5 select-none custom-scrollbar shrink-0 text-[10px]">
-                          {[
-                            '1-40', '41-80', '81-120', '121-160', '161-200', 
-                            '201-240', '241-280', '281-320', '321-360', '361-400'
-                          ].map((range) => (
-                            <button
-                              key={range}
-                              type="button"
-                              onClick={() => setCardCategory(range)}
-                              className={`px-2 py-1 rounded-lg border font-bold transition shrink-0 ${
-                                cardCategory === range
-                                  ? 'bg-[#ed8936] text-white border-orange-400'
-                                  : 'bg-[#101721] border-[#1b2b3d] text-zinc-400 hover:text-zinc-200'
-                              }`}
-                            >
-                              ካርድ {range}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Grid of 40 Cards of the current category */}
-                        <div className="grid grid-cols-5 gap-1 max-h-[160px] overflow-y-auto pr-1 select-none custom-scrollbar">
+                        {/* Grid of all 400 Cards scrolling downwards */}
+                        <div className="grid grid-cols-10 gap-1 max-h-[300px] overflow-y-auto pr-1 select-none custom-scrollbar border border-zinc-800/40 p-2 rounded-2xl bg-[#070d14]">
                           {(() => {
-                            const [startStr, endStr] = cardCategory.split('-');
-                            const start = parseInt(startStr, 10);
-                            const end = parseInt(endStr, 10);
-                            const cards = [];
-                            for (let i = start; i <= end; i++) {
-                              cards.push(i);
-                            }
+                            const cards = Array.from({ length: 400 }, (_, i) => i + 1);
 
                             return cards.map((num) => {
                               const isTaken = game.players.some(p => p.cardNumber === num);
@@ -1012,18 +1192,11 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                                     setSelectedCardNumber(num);
                                     setCardSearch(num.toString());
                                   }}
-                                  className={`py-1.5 rounded-lg text-[10px] font-mono font-bold border transition flex flex-col items-center justify-center gap-0.5 relative ${
-                                    isSelected
-                                      ? 'bg-gradient-to-tr from-orange-500 to-amber-500 text-slate-950 border-orange-300 font-black shadow-md scale-102'
-                                      : isTaken
-                                      ? 'bg-zinc-950/60 border-zinc-950/30 text-zinc-600 line-through cursor-not-allowed'
-                                      : 'bg-[#111923] border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                                  className={`h-8 rounded-lg text-[10px] font-mono font-bold border transition flex items-center justify-center relative ${
+                                    getCardBgColor(num, isSelected, isTaken)
                                   }`}
                                 >
-                                  <span>#{num}</span>
-                                  {isTaken && (
-                                    <span className="text-[7px] text-red-500 font-extrabold uppercase scale-90">TAKEN</span>
-                                  )}
+                                  <span>{num}</span>
                                 </button>
                               );
                             });
@@ -1054,14 +1227,22 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                             {generateClientCard(selectedCardNumber).flatMap((row, rIdx) =>
                               row.map((cell, cIdx) => {
                                 const isCenter = rIdx === 2 && cIdx === 2;
+                                let previewStyle = 'bg-zinc-900 border border-zinc-800 text-zinc-300';
+                                if (isCenter) {
+                                  previewStyle = 'bg-emerald-500/20 text-emerald-400 font-black border border-emerald-500/30';
+                                } else {
+                                  switch (cIdx) {
+                                    case 0: previewStyle = 'bg-red-950/25 text-red-300 border border-red-900/10'; break;
+                                    case 1: previewStyle = 'bg-blue-950/25 text-blue-300 border border-blue-900/10'; break;
+                                    case 2: previewStyle = 'bg-emerald-950/25 text-emerald-300 border border-emerald-900/10'; break;
+                                    case 3: previewStyle = 'bg-amber-950/25 text-amber-300 border border-amber-900/10'; break;
+                                    case 4: previewStyle = 'bg-purple-950/25 text-purple-300 border border-purple-900/10'; break;
+                                  }
+                                }
                                 return (
                                   <div
                                     key={`${rIdx}-${cIdx}`}
-                                    className={`h-[15px] rounded-[3px] text-[8px] font-mono font-bold flex items-center justify-center ${
-                                      isCenter 
-                                        ? 'bg-emerald-500/20 text-emerald-400 font-black' 
-                                        : 'bg-zinc-900 border border-zinc-800 text-zinc-300'
-                                    }`}
+                                    className={`h-[15px] rounded-[3px] text-[8px] font-mono font-bold flex items-center justify-center ${previewStyle}`}
                                   >
                                     {isCenter ? '★' : cell.value.toString().padStart(2, '0')}
                                   </div>
@@ -1167,25 +1348,25 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
 
                 {/* Stats Pill boxes (5 rows layout matching the image top) */}
                 <div className="grid grid-cols-5 gap-1.5 my-2.5 select-none text-center">
-                  <div className="bg-[#101b2a] border border-[#1a2b40]/80 rounded-xl py-1 px-1">
-                    <div className="text-[8px] text-zinc-400 uppercase font-semibold">Games</div>
-                    <div className="text-[11px] font-black font-mono text-zinc-100">1</div>
+                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Games</div>
+                    <div className="text-[11px] font-black font-mono text-slate-800">1</div>
                   </div>
-                  <div className="bg-[#101b2a] border border-[#1a2b40]/80 rounded-xl py-1 px-1">
-                    <div className="text-[8px] text-zinc-400 uppercase font-semibold">Derash</div>
-                    <div className="text-[11px] font-black font-mono text-amber-400">{derashPrize}</div>
+                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Derash</div>
+                    <div className="text-[11px] font-black font-mono text-amber-600">{derashPrize}</div>
                   </div>
-                  <div className="bg-[#101b2a] border border-[#1a2b40]/80 rounded-xl py-1 px-1">
-                    <div className="text-[8px] text-zinc-400 uppercase font-semibold">Players</div>
-                    <div className="text-[11px] font-black font-mono text-zinc-100">{game.players.length}</div>
+                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Players</div>
+                    <div className="text-[11px] font-black font-mono text-slate-800">{game.players.length}</div>
                   </div>
-                  <div className="bg-[#101b2a] border border-[#1a2b40]/80 rounded-xl py-1 px-1">
-                    <div className="text-[8px] text-zinc-400 uppercase font-semibold">Bet</div>
-                    <div className="text-[11px] font-black font-mono text-zinc-100">{game.betAmount}</div>
+                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Bet</div>
+                    <div className="text-[11px] font-black font-mono text-slate-800">{game.betAmount}</div>
                   </div>
-                  <div className="bg-[#101b2a] border border-[#1a2b40]/80 rounded-xl py-1 px-1">
-                    <div className="text-[8px] text-zinc-400 uppercase font-semibold">Call</div>
-                    <div className="text-[11px] font-black font-mono text-zinc-100">{game.drawnNumbers.length}</div>
+                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Call</div>
+                    <div className="text-[11px] font-black font-mono text-slate-800">{game.drawnNumbers.length}</div>
                   </div>
                 </div>
 
@@ -1193,10 +1374,10 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                 <div className="grid grid-cols-12 gap-2 flex-1 items-stretch select-none">
                   
                   {/* LEFT COLUMN: 75-NUMBER TABLE (Span 5) */}
-                  <div className="col-span-5 bg-[#0b1420] border border-[#152336] rounded-2xl p-2 flex flex-col gap-1 justify-between">
+                  <div className="col-span-5 bg-white border border-slate-200 rounded-2xl p-2 flex flex-col gap-1 justify-between shadow-sm">
                     
                     {/* B I N G O Header Row */}
-                    <div className="grid grid-cols-5 gap-0.5 text-center font-sans pb-1.5 border-b border-[#152336]">
+                    <div className="grid grid-cols-5 gap-0.5 text-center font-sans pb-1.5 border-b border-slate-100">
                       <div className="w-5 h-5 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center mx-auto shadow-sm">B</div>
                       <div className="w-5 h-5 rounded-full bg-blue-500 text-white text-[9px] font-black flex items-center justify-center mx-auto shadow-sm">I</div>
                       <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center mx-auto shadow-sm">N</div>
@@ -1213,7 +1394,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                           const isDrawn = game.drawnNumbers.includes(num);
                           const isLastDrawn = game.drawnNumbers.length > 0 && game.drawnNumbers[game.drawnNumbers.length - 1] === num;
 
-                          let cellStyle = 'bg-[#1e293b] border-[#334155] text-zinc-400 font-medium';
+                          let cellStyle = 'bg-slate-50 border-slate-100 text-slate-400 font-medium';
                           if (isLastDrawn) {
                             cellStyle = 'bg-red-500 border-red-400 text-white font-extrabold animate-pulse shadow-md shadow-red-500/30';
                           } else if (isDrawn) {
@@ -1236,12 +1417,18 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                   {/* RIGHT COLUMN: CALL DETAILS & CARD (Span 7) */}
                   <div className="col-span-7 flex flex-col gap-2 justify-between">
                     
-                    {/* Countdown indicator */}
-                    <div className="bg-[#0b1420] border border-[#152336] rounded-xl px-2.5 py-1 flex items-center justify-between text-[10px] font-bold text-zinc-400">
+                     {/* Countdown indicator */}
+                    <div className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 flex items-center justify-between text-[10px] font-bold text-slate-600 shadow-sm">
                       <span>ማብቂያ ጊዜ (Time Left)</span>
-                      <span className="font-mono text-amber-400 font-black animate-pulse">
-                        {game.gameTimeLeft !== undefined ? `${game.gameTimeLeft}s` : '90s'}
-                      </span>
+                      {game.isOvertime ? (
+                        <span className="font-mono text-rose-600 font-black animate-pulse text-[9px] bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded-lg">
+                          ተጨማሪ እጣ (Overtime)
+                        </span>
+                      ) : (
+                        <span className="font-mono text-rose-600 font-black animate-pulse">
+                          {game.gameTimeLeft !== undefined ? `${game.gameTimeLeft}s` : '90s'}
+                        </span>
+                      )}
                     </div>
 
                     {/* Current Call Box */}
@@ -1283,18 +1470,18 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                     </div>
 
                     {/* 5x5 CARTELA (BINGO CARD) */}
-                    <div className="bg-[#0b1420] border border-[#152336] rounded-2xl p-2 flex flex-col gap-1 shadow-inner flex-1 justify-between">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-2 flex flex-col gap-1 shadow-inner flex-1 justify-between shadow-sm">
                       
                       {/* Winning Patterns HUD */}
-                      <div className="flex gap-1.5 justify-center items-center py-1 border-b border-[#152336]/60 mb-1 select-none overflow-x-auto custom-scrollbar shrink-0">
-                        <span className="text-[7.5px] font-bold text-zinc-500 uppercase tracking-wider shrink-0">የአሸናፊነት ቅጦች (PATTERNS):</span>
-                        <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
+                      <div className="flex gap-1.5 justify-center items-center py-1 border-b border-slate-100 mb-1 select-none overflow-x-auto custom-scrollbar shrink-0">
+                        <span className="text-[7.5px] font-bold text-slate-500 uppercase tracking-wider shrink-0">የአሸናፊነት ቅጦች (PATTERNS):</span>
+                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
                           ➖ መስመር (Line)
                         </span>
-                        <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
+                        <span className="bg-amber-50 text-amber-700 border border-amber-100 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
                           📐 ሰያፍ (Diagonal)
                         </span>
-                        <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
+                        <span className="bg-purple-50 text-purple-700 border border-purple-100 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
                           ⭐️ ማዕዘን (Corners)
                         </span>
                       </div>
@@ -1322,14 +1509,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                         {activePlayerInGame.card.flatMap((row, rIdx) =>
                           row.map((cell, cIdx) => {
                             const isFree = rIdx === 2 && cIdx === 2;
-                            const marked = cell.marked;
-
-                            let squareStyle = 'bg-[#f7fafc] border-zinc-300 text-[#1a365d] font-bold';
-                            if (isFree) {
-                              squareStyle = 'bg-[#48bb78] border-[#38a169] text-white font-extrabold shadow-sm';
-                            } else if (marked) {
-                              squareStyle = 'bg-[#48bb78] border-[#38a169] text-white font-black ring-2 ring-[#ecc94b] shadow-md';
-                            }
+                            const squareStyle = getPlaySquareStyle(cell, rIdx, cIdx);
 
                             return (
                               <div
@@ -1373,7 +1553,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                   <button
                     type="button"
                     onClick={onRefresh}
-                    className="py-2.5 bg-[#4299e1] hover:bg-blue-600 text-white font-bold rounded-full flex items-center justify-center gap-1.5 transition shadow-md"
+                    className="py-2.5 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full flex items-center justify-center gap-1.5 transition shadow-md"
                   >
                     <RefreshCw size={12} /> Refresh
                   </button>
@@ -1382,17 +1562,30 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                     type="button"
                     disabled={loadingAction === 'leaving'}
                     onClick={handleLeaveGame}
-                    className="py-2.5 bg-[#e53e3e] hover:bg-red-600 text-white font-bold rounded-full flex items-center justify-center gap-1.5 transition shadow-md"
+                    className="py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-full flex items-center justify-center gap-1.5 transition shadow-md"
                   >
                     {loadingAction === 'leaving' ? (
                       <RefreshCw size={12} className="animate-spin" />
                     ) : (
                       <>
-                         <LogOut size={12} /> Leave Game
+                         <LogOut size={12} /> Leave Card
                       </>
                     )}
                   </button>
                 </div>
+
+                {activePlayersInGame.length > 1 && (
+                  <div className="mt-2 text-center shrink-0">
+                    <button
+                      type="button"
+                      disabled={loadingAction === 'leaving-all'}
+                      onClick={handleLeaveAll}
+                      className="text-[10px] text-red-500 font-extrabold hover:underline"
+                    >
+                      {loadingAction === 'leaving-all' ? 'Leaving all...' : '✕ ከሁሉም ካርዶች ውጣ (Leave All Cards)'}
+                    </button>
+                  </div>
+                )}
 
               </div>
             )}
@@ -1406,7 +1599,5 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
         </div>
 
       </div>
-
-    </div>
-  );
-}
+    );
+  }

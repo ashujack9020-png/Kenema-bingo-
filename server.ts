@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { BingoCell, BingoGame, TelegramBotConfig, TelegramLog, Player, DepositRequest, WithdrawRequest } from './src/types.js';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -116,6 +117,12 @@ app.use((req, res, next) => {
       if (candidate.includes('ais-pre-')) {
         preUrlActive = true;
       }
+
+      if (botConfig.token && botSettings.botMode === 'webhook') {
+        registerWebhookIfNeeded(candidate).catch(err => {
+          console.error('Failed to register webhook on request:', err.message);
+        });
+      }
     }
   }
   next();
@@ -171,6 +178,7 @@ interface BotSettings {
   welcomeBonus: number;
   referralBonus: number;
   forceSharedPreUrl?: boolean;
+  botMode?: 'polling' | 'webhook' | 'disabled';
 }
 
 let botSettings: BotSettings = {
@@ -181,8 +189,41 @@ let botSettings: BotSettings = {
   contactUsername: 'ashujack9020',
   welcomeBonus: 10,
   referralBonus: 10,
-  forceSharedPreUrl: true
+  forceSharedPreUrl: true,
+  botMode: process.env.NODE_ENV === 'production' ? 'webhook' : 'disabled'
 };
+
+const SETTINGS_FILE = path.join(process.cwd(), 'bot_settings_persistent.json');
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+      const loaded = JSON.parse(data);
+      botSettings = { ...botSettings, ...loaded };
+      console.log('Persistent bot settings loaded:', botSettings);
+    }
+  } catch (err: any) {
+    console.error('Failed to load persistent bot settings:', err.message);
+  }
+  
+  // Enforce webhook in production to ensure Render always uses webhooks
+  if (process.env.NODE_ENV === 'production') {
+    botSettings.botMode = 'webhook';
+  }
+}
+
+function saveSettings() {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(botSettings, null, 2), 'utf8');
+    console.log('Persistent bot settings saved.');
+  } catch (err: any) {
+    console.error('Failed to save persistent bot settings:', err.message);
+  }
+}
+
+// Initial settings load
+loadSettings();
 
 function getUserProfile(chatId: string, username: string, firstName: string): UserProfile {
   let profile = userProfiles.get(chatId);
@@ -571,11 +612,15 @@ async function startBotPolling() {
     botConfig.error = 'No token provided';
     return;
   }
+  if (botSettings.botMode !== 'polling') {
+    addLog('system', 'Bot', `Telegram bot polling is disabled on this instance (Connection Mode is: ${botSettings.botMode}).`);
+    return;
+  }
 
   botPollingActive = true;
   botConfig.isActive = true;
   botConfig.error = null;
-  addLog('system', 'Bot', 'Connecting to Telegram API...');
+  addLog('system', 'Bot', 'Connecting to Telegram API via Long Polling...');
 
   try {
     // Delete any active conflicting webhooks (critical for long polling to work if previously integrated with webhook-based hosts)
@@ -631,8 +676,31 @@ async function startBotPolling() {
       }
       pollingTimeout = setTimeout(poll, 200);
     } catch (err: any) {
-      console.error('Polling cycle error:', err.message);
-      addLog('error', 'Bot', `Polling interrupted: ${err.message}. Retrying in 5s...`);
+      const errMsg = err.message || '';
+      console.error('Polling cycle error:', errMsg);
+      
+      const isWebhookConflict = errMsg.includes('webhook is active') || 
+                                errMsg.includes('setWebhook') || 
+                                errMsg.includes('terminated by setWebhook');
+      const isOtherPollingConflict = errMsg.includes('terminated by other getUpdates');
+      
+      if (isWebhookConflict) {
+        botPollingActive = false;
+        botConfig.isActive = false;
+        botConfig.error = 'Webhook conflict detected (active on another server)';
+        addLog('error', 'Bot', 'Conflict Detected: A Webhook is active on another instance (e.g., Render production). Suspending local polling to avoid breaking your production bot. You can switch Bot Mode to webhook or re-enable polling when ready.');
+        return;
+      }
+      
+      if (isOtherPollingConflict) {
+        botPollingActive = false;
+        botConfig.isActive = false;
+        botConfig.error = 'Another bot polling instance is running';
+        addLog('error', 'Bot', 'Conflict Detected: Another instance is polling. Suspending local polling to avoid conflicts. Please ensure only one developer instance has polling enabled.');
+        return;
+      }
+      
+      addLog('error', 'Bot', `Polling interrupted: ${errMsg}. Retrying in 5s...`);
       pollingTimeout = setTimeout(poll, 5000);
     }
   }
@@ -649,6 +717,67 @@ function stopBotPolling() {
     pollingTimeout = null;
   }
   addLog('system', 'Bot', 'Telegram bot polling stopped.');
+}
+
+let lastRegisteredWebhookUrl = '';
+
+async function registerWebhookIfNeeded(hostUrl: string) {
+  if (!botConfig.token) return;
+  if (botSettings.botMode !== 'webhook') return;
+  
+  // Skip local addresses
+  if (!hostUrl || hostUrl.includes('localhost') || hostUrl.includes('127.0.0.1')) {
+    return;
+  }
+  
+  const targetWebhookUrl = `${hostUrl}/api/telegram-webhook`;
+  if (lastRegisteredWebhookUrl === targetWebhookUrl) {
+    return; // Already registered in this session
+  }
+  
+  lastRegisteredWebhookUrl = targetWebhookUrl;
+  addLog('system', 'Bot', `Configuring Telegram Webhook to: ${targetWebhookUrl}`);
+  
+  try {
+    if (botPollingActive) {
+      stopBotPolling();
+    }
+    
+    // Set Chat Menu Button and webhook
+    const me = await telegramRequest('getMe');
+    if (me) {
+      botConfig.botUsername = me.username;
+      
+      // Set webhook
+      await telegramRequest('setWebhook', {
+        url: targetWebhookUrl,
+        allowed_updates: ['message', 'callback_query']
+      });
+      
+      // Set Chat Menu Button so users have a permanent "Play Bingo" button
+      try {
+        await telegramRequest('setChatMenuButton', {
+          menu_button: {
+            type: 'web_app',
+            text: '🎯 Play Bingo 🚀',
+            web_app: { url: `${hostUrl}` } // use the correct resolved host url!
+          }
+        });
+      } catch (menuErr: any) {
+        console.error('Failed to set chat menu button on webhook:', menuErr.message);
+      }
+      
+      botConfig.isActive = true;
+      botConfig.error = null;
+      addLog('system', 'Bot', `Telegram Webhook registered successfully for bot @${me.username}!`);
+    }
+  } catch (err: any) {
+    console.error('Failed to register Telegram Webhook:', err.message);
+    botConfig.isActive = false;
+    botConfig.error = `Webhook registration failed: ${err.message}`;
+    addLog('error', 'Bot', `Webhook registration failed: ${err.message}`);
+    lastRegisteredWebhookUrl = ''; // Clear so we can retry
+  }
 }
 
 // Handle Incoming Updates (Messages & Callbacks)
@@ -750,6 +879,8 @@ async function handleTelegramUpdate(update: any) {
           amount,
           method,
           screenshotUrl,
+          smsText: caption || undefined,
+          transactionId: txnId || undefined,
           timestamp: Date.now(),
           status: 'pending',
         };
@@ -1017,6 +1148,41 @@ async function processCommand(chatId: string, username: string, firstName: strin
         return successMsg;
       }
     }
+  }
+
+  // 2.5 Admin Secure Panel Commands
+  if (command === '/admin' || command === '/finance' || command === '/control' || lowerText === 'አስተዳዳሪ' || lowerText === 'ፊናንስ') {
+    const isAdmin = username.toLowerCase() === botSettings.contactUsername.toLowerCase() || username.toLowerCase() === 'ashujack9020';
+    if (!isAdmin) {
+      const accessDeniedMsg = `❌ <b>ይቅርታ ${firstName}!</b> ይህ ትዕዛዝ ለዋናው አስተዳዳሪ (@${botSettings.contactUsername}) ብቻ የተፈቀደ ነው።`;
+      await telegramRequest('sendMessage', { chat_id: chatId, text: accessDeniedMsg, parse_mode: 'HTML' });
+      return accessDeniedMsg;
+    }
+
+    const adminWebAppUrl = getSecureWebAppUrl() + "?admin_pin=kenema009020";
+    const adminPanelMsg = `🔑 <b>የቢንጎ አስተዳዳሪ መቆጣጠሪያ ሰሌዳ (Bela Bingo Admin Control Board)</b> 🔑\n\n` +
+      `ሰላም ዋናው አስተዳዳሪ <b>${firstName}</b>!\n\n` +
+      `የተጫዋቾችን ሂሳብ ለመሙላት (Deposit)፣ ገንዘብ ለመላክ (Withdraw)፣ ወይም ጨዋታዎችን ለመቆጣጠር ከታች ያሉትን አማራጮች ይጠቀሙ👇\n\n` +
+      `🔗 <b>በቀጥታ ያለ ፒን ለመግባት (Direct Login Link):</b>\n<a href="${adminWebAppUrl}">👉 እዚህ በመጫን የአስተዳዳሪ ሰሌዳውን ይክፈቱ 👈</a>\n\n` +
+      `📌 <b>በስልክ መተግበሪያ ላይ ለመግባት፦</b>\n` +
+      `1️⃣ መጫወቻውን (Open WebApp) ይክፈቱ\n` +
+      `2️⃣ በሞባይል ስክሪኑ ላይ ከላይ በስተግራ ያለውን የሰዓት ምልክት 🔒 <b>'13:57'</b> ይንኩ\n` +
+      `3️⃣ ይህንን ሚስጥር ቁጥር ያስገቡ፦ <code>kenema009020</code>\n\n` +
+      `<i>ማሳሰቢያ: አንዴ በስልክዎ ወይም በኮምፒተርዎ ከገቡ በኋላ የይለፍ ቃሉ በራሱ ስለሚቀመጥ ሁልጊዜ ሚስጥር ቁጥሩን ማስገባት አይጠበቅብዎትም! ✨</i>`;
+
+    await telegramRequest('sendMessage', {
+      chat_id: chatId,
+      text: adminPanelMsg,
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '📊 መቆጣጠሪያ ሰሌዳ (Open Admin WebApp) 🚀', web_app: { url: adminWebAppUrl } }
+          ]
+        ]
+      }
+    });
+    return adminPanelMsg;
   }
 
   // 3. Regular Commands & Text Menu Router
@@ -1288,32 +1454,20 @@ async function processCommand(chatId: string, username: string, firstName: strin
       return msg;
     }
 
-    const exists = gameState.players.find(p => p.id === chatId);
-    if (exists) {
-      const msg = `ℹ️ <b>${firstName}</b> ቀድመው ተመዝግበዋል። የቢንጎ ቁጥሮችዎን ለመመልከት /card ይበሉ።`;
-      await telegramRequest('sendMessage', {
-        chat_id: chatId,
-        text: msg,
-        parse_mode: 'HTML',
-        reply_markup: inlineButtons
-      });
-      return msg;
+    // We allow joining multiple times with different cards!
+    if (requestedCardNumber !== null) {
+      const isTaken = gameState.players.some(p => p.cardNumber === requestedCardNumber);
+      if (isTaken) {
+        const msg = `❌ <b>ይቅርታ</b>! ካርድ ቁጥር ${requestedCardNumber} ቀድሞውኑ በሌላ ተጫዋች ወይም በእርስዎ ተይዟል። እባክዎ ሌላ ካርድ ይምረጡ።`;
+        await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
+        return msg;
+      }
     }
 
     if (gameState.players.length >= gameState.maxPlayers) {
       const msg = `❌ <b>ይቅርታ</b>! ጨዋታው ሙሉ ነው። የሚፈቀደው ከፍተኛ የተጫዋች ብዛት: ${gameState.maxPlayers}`;
       await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
       return msg;
-    }
-
-    // Check if the requested card is already assigned
-    if (requestedCardNumber !== null) {
-      const isTaken = gameState.players.some(p => p.cardNumber === requestedCardNumber);
-      if (isTaken) {
-        const msg = `❌ <b>ይቅርታ</b>! ካርድ ቁጥር ${requestedCardNumber} ቀድሞውኑ በሌላ ተጫዋች ተይዟል። እባክዎ ሌላ ካርድ ይምረጡ።`;
-        await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
-        return msg;
-      }
     }
 
     // Deduct entry fee
@@ -1361,39 +1515,66 @@ async function processCommand(chatId: string, username: string, firstName: strin
   }
 
   if (command === '/card' || command === 'ካርታዬ') {
-    const player = gameState.players.find(p => p.id === chatId);
-    if (!player) {
+    const players = gameState.players.filter(p => p.id === chatId);
+    if (players.length === 0) {
       const msg = `⚠️ <b>${firstName}</b>! እርስዎ ገና አልተመዘገቡም። ለመመዝገብ መጀመሪያ <b>/join</b> ይበሉ።`;
       await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
       return msg;
     }
 
-    const cardMsg = formatTelegramCard(player.card, player.cardNumber);
-    await telegramRequest('sendMessage', {
-      chat_id: chatId,
-      text: cardMsg,
-      parse_mode: 'HTML',
-      reply_markup: inlineButtons,
-    });
-    return cardMsg;
+    let allCardMsgs = '';
+    for (const player of players) {
+      const cardMsg = formatTelegramCard(player.card, player.cardNumber);
+      await telegramRequest('sendMessage', {
+        chat_id: chatId,
+        text: cardMsg,
+        parse_mode: 'HTML',
+        reply_markup: inlineButtons,
+      });
+      allCardMsgs += cardMsg + '\n\n';
+    }
+    return allCardMsgs;
   }
 
   if (command === '/leave' || command === 'ውጣ') {
-    const player = gameState.players.find(p => p.id === chatId);
-    if (!player) {
+    const parts = cleanText.split(' ');
+    let targetCardNum: number | null = null;
+    if (parts.length > 1) {
+      const parsed = parseInt(parts[1], 10);
+      if (!isNaN(parsed)) targetCardNum = parsed;
+    }
+
+    const players = gameState.players.filter(p => p.id === chatId);
+    if (players.length === 0) {
       const msg = `⚠️ አልተመዘገቡም ነበር።`;
       await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
       return msg;
     }
 
-    const index = gameState.players.findIndex(p => p.id === chatId);
-    gameState.players.splice(index, 1);
+    if (targetCardNum !== null) {
+      const index = gameState.players.findIndex(p => p.id === chatId && p.cardNumber === targetCardNum);
+      if (index !== -1) {
+        gameState.players.splice(index, 1);
+        profile.balance += gameState.betAmount;
+        updatePrizePool();
+        addLog('system', 'Lobby', `Player ${firstName} left with Card #${targetCardNum}. Refunded ${gameState.betAmount} Birr.`);
+        const msg = `👋 <b>${firstName}</b> ከቢንጎ ካርታ ቁጥር #${targetCardNum} ወጥተዋል። <code>${gameState.betAmount} Birr</code> ተመላሽ ተደርጓል`;
+        await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
+        return msg;
+      } else {
+        const msg = `❌ <b>ይቅርታ</b>! ካርታ ቁጥር ${targetCardNum} የእርስዎ አይደለም ወይም አልተገኘም።`;
+        await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
+        return msg;
+      }
+    }
 
-    profile.balance += gameState.betAmount;
+    const count = players.length;
+    gameState.players = gameState.players.filter(p => p.id !== chatId);
+    profile.balance += gameState.betAmount * count;
     updatePrizePool();
 
-    addLog('system', 'Lobby', `Player ${firstName} left the lobby. Refunded ${gameState.betAmount} Birr.`);
-    const msg = `👋 <b>${firstName}</b> ከቢንጎ ጨዋታው ወጥተዋል። (ካርታ ቁጥር ${player.cardNumber} ነፃ ሆኗል፣ <code>${gameState.betAmount} Birr</code> ተመላሽ ተደርጓል)`;
+    addLog('system', 'Lobby', `Player ${firstName} left the lobby (${count} cards). Refunded ${gameState.betAmount * count} Birr.`);
+    const msg = `👋 <b>${firstName}</b> ከሁሉም ቢንጎ ካርታዎችዎ ወጥተዋል (${count} ካርታዎች)። <code>${gameState.betAmount * count} Birr</code> ተመላሽ ተደርጓል)`;
     await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
     return msg;
   }
@@ -1405,23 +1586,40 @@ async function processCommand(chatId: string, username: string, firstName: strin
       return msg;
     }
 
-    const player = gameState.players.find(p => p.id === chatId);
-    if (!player) {
+    const players = gameState.players.filter(p => p.id === chatId);
+    if (players.length === 0) {
       const msg = `⚠️ እርስዎ በዚህ ጨዋታ ውስጥ አልተሳተፉም።`;
       await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
       return msg;
     }
 
-    const checkResult = checkBingo(player.card);
-    if (checkResult.won) {
-      player.hasWon = true;
-      player.winningPattern = checkResult.pattern;
-      gameState.status = 'finished';
-      gameState.autoDraw = false;
-      if (autoDrawInterval) {
-        clearInterval(autoDrawInterval);
-        autoDrawInterval = null;
+    let winningPlayer: Player | null = null;
+    let checkResult: any = null;
+
+    for (const p of players) {
+      const res = checkBingo(p.card);
+      if (res.won) {
+        winningPlayer = p;
+        checkResult = res;
+        break;
       }
+    }
+
+    if (!winningPlayer || !checkResult) {
+      const msg = `❌ <b>ውድ ${firstName}</b>! ካርታዎ ላይ ገና ቢንጎ አልሞላም። እባክዎ ሁሉም የካርታዎ መስመሮች እስኪሞሉ ድረስ ይጠብቁ!`;
+      await telegramRequest('sendMessage', { chat_id: chatId, text: msg, parse_mode: 'HTML' });
+      return msg;
+    }
+
+    const player = winningPlayer;
+    player.hasWon = true;
+    player.winningPattern = checkResult.pattern;
+    gameState.status = 'finished';
+    gameState.autoDraw = false;
+    if (autoDrawInterval) {
+      clearInterval(autoDrawInterval);
+      autoDrawInterval = null;
+    }
 
       const totalStake = gameState.players.length * gameState.betAmount;
       const winPrize = totalStake * 0.8;
@@ -1448,11 +1646,6 @@ async function processCommand(chatId: string, username: string, firstName: strin
         `የወጡ ቁጥሮች: ${gameState.drawnNumbers.length} ቁጥሮች`);
 
       return winMsg;
-    } else {
-      const failMsg = `❌ <b>ይቅርታ ${player.firstName}</b>! የእርስዎ ካርታ ገና ቢንጎ አልበላም (No winning line yet). እባክዎን የወጡትን ቁጥሮች በደንብ ያረጋግጡና እንደገና ይሞክሩ።`;
-      await telegramRequest('sendMessage', { chat_id: chatId, text: failMsg, parse_mode: 'HTML' });
-      return failMsg;
-    }
   }
 
   // Unknown message or input text that is not a command/state
@@ -1474,6 +1667,7 @@ async function triggerBingoWin(player: Player, checkResult: { won: boolean; patt
   player.winningPattern = checkResult.pattern;
   gameState.status = 'finished';
   gameState.nextGameCountdown = 8; // 8 seconds countdown before next lobby starts
+  gameState.isOvertime = false;
 
   const totalStake = gameState.players.length * gameState.betAmount;
   const winPrize = totalStake * 0.8;
@@ -1673,6 +1867,7 @@ function startAutomatedGameLoop() {
         }
       } 
       else if (gameState.status === 'playing') {
+        const is25OrMore = gameState.players.length >= 25;
         if (gameState.gameTimeLeft && gameState.gameTimeLeft > 0) {
           gameState.gameTimeLeft--;
           secondsCounter++;
@@ -1682,11 +1877,26 @@ function startAutomatedGameLoop() {
             drawBallAutomated();
           }
         } else {
-          // Timeout reached (2 minutes max limit reached)
-          gameState.status = 'finished';
-          gameState.nextGameCountdown = 8;
-          addLog('system', 'Automated Loop', 'Game timeout reached (2 minutes maximum time limit)!');
-          broadcastTelegramMessage('🏁 <b>ጨዋታው ተጠናቋል!</b> የ 2 ደቂቃ የጊዜ ገደብ አልቋል። አሸናፊ የለም። ለአዲስ ዙር በመዘጋጀት ላይ...');
+          // Timeout reached (90s limit reached)
+          if (is25OrMore) {
+            // Overtime mode active! Keep drawing balls until someone wins
+            secondsCounter++;
+            if (!gameState.isOvertime) {
+              gameState.isOvertime = true;
+              addLog('system', 'Automated Loop', '⚡ Overtime / ተጨማሪ እጣ started! 25+ players are active. Drawing continues until a winner is found.');
+              broadcastTelegramMessage('⚡ <b>ተጨማሪ እጣ! (Overtime Mode Active!)</b>\n\nከ 25 በላይ ካርዶች በመያዛቸው ምክንያት አሸናፊ እስኪገኝ ድረስ እጣ ማውጣቱ ይቀጥላል! 🎰');
+            }
+            if (secondsCounter % 3 === 0) {
+              drawBallAutomated();
+            }
+            gameState.gameTimeLeft = 0; // lock at 0
+          } else {
+            gameState.status = 'finished';
+            gameState.nextGameCountdown = 8;
+            gameState.isOvertime = false;
+            addLog('system', 'Automated Loop', 'Game timeout reached (2 minutes maximum time limit)!');
+            broadcastTelegramMessage('🏁 <b>ጨዋታው ተጠናቋል!</b> የ 2 ደቂቃ የጊዜ ገደብ አልቋል። አሸናፊ የለም። ለአዲስ ዙር በመዘጋጀት ላይ...');
+          }
         }
       } 
       else if (gameState.status === 'finished') {
@@ -1699,6 +1909,7 @@ function startAutomatedGameLoop() {
           gameState.gameTimeLeft = 90;
           gameState.drawnNumbers = [];
           gameState.players = []; // Clear players so clients automatically return to card selection!
+          gameState.isOvertime = false;
 
           addLog('system', 'Automated Loop', 'New continuous game cycle started! Lobby is now open.');
           broadcastTelegramMessage('🆕 <b>አዲስ ዙር ተከፍቷል!</b>\n\nእባክዎን ከታች ያለውን ቁልፍ ተጭነው ካርድ እና የውርርድ መጠን በመምረጥ አዲሱን ጨዋታ ይቀላቀሉ! 🎰');
@@ -1741,9 +1952,25 @@ app.get('/api/game-state', (req, res) => {
   });
 });
 
+// Telegram Webhook Endpoint
+app.post('/api/telegram-webhook', async (req, res) => {
+  try {
+    const update = req.body;
+    if (update) {
+      handleTelegramUpdate(update).catch(err => {
+        console.error('Error handling Telegram Webhook Update:', err);
+      });
+    }
+    res.sendStatus(200);
+  } catch (err: any) {
+    console.error('Telegram Webhook error:', err.message);
+    res.sendStatus(500);
+  }
+});
+
 // Update bot settings
-app.post('/api/config/settings', (req, res) => {
-  const { telebirrNumber, telebirrName, cbeAccount, cbeName, contactUsername, welcomeBonus, referralBonus, forceSharedPreUrl } = req.body;
+app.post('/api/config/settings', async (req, res) => {
+  const { telebirrNumber, telebirrName, cbeAccount, cbeName, contactUsername, welcomeBonus, referralBonus, forceSharedPreUrl, botMode } = req.body;
   
   if (telebirrNumber !== undefined) botSettings.telebirrNumber = String(telebirrNumber);
   if (telebirrName !== undefined) botSettings.telebirrName = String(telebirrName);
@@ -1753,8 +1980,44 @@ app.post('/api/config/settings', (req, res) => {
   if (welcomeBonus !== undefined) botSettings.welcomeBonus = Number(welcomeBonus);
   if (referralBonus !== undefined) botSettings.referralBonus = Number(referralBonus);
   if (forceSharedPreUrl !== undefined) botSettings.forceSharedPreUrl = Boolean(forceSharedPreUrl);
+  
+  const oldMode = botSettings.botMode;
+  if (botMode !== undefined && botMode !== oldMode) {
+    botSettings.botMode = botMode;
+    addLog('system', 'Config', `Bot Mode changed from ${oldMode} to ${botMode}`);
+    
+    try {
+      if (botMode === 'polling') {
+        lastRegisteredWebhookUrl = '';
+        try {
+          await telegramRequest('deleteWebhook');
+          addLog('system', 'Bot', 'Cleared Telegram Webhook to switch to Long Polling.');
+        } catch (e) {}
+        startBotPolling().catch(err => console.error('Failed to start polling:', err));
+      } else if (botMode === 'webhook') {
+        if (botPollingActive) {
+          stopBotPolling();
+        }
+        if (lastKnownHost && !lastKnownHost.includes('localhost')) {
+          registerWebhookIfNeeded(lastKnownHost).catch(err => console.error('Failed to register webhook:', err));
+        }
+      } else if (botMode === 'disabled') {
+        if (botPollingActive) {
+          stopBotPolling();
+        }
+        try {
+          await telegramRequest('deleteWebhook');
+        } catch (e) {}
+        botConfig.isActive = false;
+        addLog('system', 'Bot', 'Bot connection has been completely disabled.');
+      }
+    } catch (err: any) {
+      console.error('Error switching bot mode:', err.message);
+    }
+  }
 
   addLog('system', 'Config', 'Bot Settings updated successfully.');
+  saveSettings();
   res.json({ success: true, settings: botSettings });
 });
 
@@ -1918,7 +2181,7 @@ app.post('/api/withdrawals/:id/reject', async (req, res) => {
 
 // Simulate a player sending a transaction screenshot
 app.post('/api/game/simulate-deposit', (req, res) => {
-  const { username, firstName, amount, method } = req.body;
+  const { username, firstName, amount, method, smsText, transactionId } = req.body;
   if (!username || !amount) {
     return res.status(400).json({ error: 'Username and amount are required' });
   }
@@ -1932,6 +2195,8 @@ app.post('/api/game/simulate-deposit', (req, res) => {
   };
 
   const selectedMethod = method === 'bank' ? 'bank' : 'telebirr';
+  const finalTxnId = transactionId || (selectedMethod === 'bank' ? `FT${Math.floor(Math.random() * 900000000) + 100000000}` : `TXN${Math.floor(Math.random() * 900000000) + 100000000}`);
+  const finalSmsText = smsText || `አስተላለፊያ ደረሰኝ፡ ${amount} Birr via ${selectedMethod === 'bank' ? 'CBE' : 'Telebirr'}. Txn ID: ${finalTxnId}`;
 
   const newDep: DepositRequest = {
     id: depId,
@@ -1941,6 +2206,8 @@ app.post('/api/game/simulate-deposit', (req, res) => {
     amount: Number(amount),
     method: selectedMethod,
     screenshotUrl: mockScreenshots[selectedMethod],
+    smsText: finalSmsText,
+    transactionId: finalTxnId,
     timestamp: Date.now(),
     status: 'pending',
   };
@@ -2079,6 +2346,15 @@ app.post('/api/game/simulate-command', async (req, res) => {
   const reply = await processCommand(simUserId, username, firstName || username, cleanText);
   addLog('outgoing', 'Bot', `Reply to @${username}: ${reply.replace(/<[^>]*>/g, '')}`);
 
+  // Look for error or warning markers in reply
+  if (reply.includes('❌') || reply.includes('⚠️') || reply.includes('ይቅርታ')) {
+    return res.json({ 
+      success: false, 
+      error: reply.replace(/<[^>]*>/g, ''), 
+      reply 
+    });
+  }
+
   res.json({ success: true, reply });
 });
 
@@ -2122,9 +2398,21 @@ app.post('/api/game/add-bots', (req, res) => {
 
 // Auto-start bot if token is already in environment variable
 if (botConfig.token) {
-  startBotPolling().catch(err => {
-    console.error('Failed to auto-start Telegram Bot:', err.message);
-  });
+  if (botSettings.botMode === 'polling') {
+    startBotPolling().catch(err => {
+      console.error('Failed to auto-start Telegram Bot polling:', err.message);
+    });
+  } else if (botSettings.botMode === 'webhook') {
+    // If APP_URL is defined, register webhook on startup, else wait for dynamic incoming requests
+    const envAppUrl = process.env.APP_URL || lastKnownHost;
+    if (envAppUrl && !envAppUrl.includes('localhost') && !envAppUrl.includes('127.0.0.1')) {
+      registerWebhookIfNeeded(envAppUrl).catch(err => {
+        console.error('Failed to auto-register Telegram Webhook on startup:', err.message);
+      });
+    } else {
+      console.log('Bot is in webhook mode. Waiting for first client request to register webhook URL.');
+    }
+  }
 }
 
 // Serve Vite Static files / Middleware
