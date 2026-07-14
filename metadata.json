@@ -1,0 +1,6 @@
+{
+  "name": "Telegram Bingo Bot",
+  "description": "A professional Telegram Bingo Bot manager with a live game display, interactive card generator, and bilingual Amharic-English controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
