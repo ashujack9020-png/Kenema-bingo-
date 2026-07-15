@@ -448,18 +448,18 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
     }
   };
 
-  // Premium Gaming Chip styling for each stake amount (Optimized for gorgeous light-mode contrasts)
+  // Premium Gaming Chip styling for each stake amount (Optimized for gorgeous dark gaming contrasts)
   const getChipStyle = (amt: number) => {
     switch(amt) {
-      case 10: return { bg: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100', chosen: 'bg-emerald-500 border-emerald-400 text-white shadow-lg font-black scale-105' };
-      case 20: return { bg: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100', chosen: 'bg-blue-500 border-blue-400 text-white shadow-lg font-black scale-105' };
-      case 30: return { bg: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100', chosen: 'bg-amber-500 border-amber-400 text-white shadow-lg font-black scale-105' };
-      case 50: return { bg: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100', chosen: 'bg-indigo-500 border-indigo-400 text-white shadow-lg font-black scale-105' };
-      case 100: return { bg: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100', chosen: 'bg-purple-500 border-purple-400 text-white shadow-lg font-black scale-105' };
-      case 200: return { bg: 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100', chosen: 'bg-rose-500 border-rose-400 text-white shadow-lg font-black scale-105' };
-      case 500: return { bg: 'bg-cyan-50 border-cyan-200 text-cyan-700 hover:bg-cyan-100', chosen: 'bg-cyan-500 border-cyan-400 text-white shadow-lg font-black scale-105' };
-      case 1000: return { bg: 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100', chosen: 'bg-orange-500 border-orange-400 text-white shadow-lg font-black scale-105' };
-      default: return { bg: 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200', chosen: 'bg-slate-800 border-slate-700 text-white shadow-lg font-black scale-105' };
+      case 10: return { bg: 'bg-emerald-950/30 border-emerald-800/40 text-emerald-400 hover:bg-emerald-950/50', chosen: 'bg-emerald-500 border-emerald-400 text-white shadow-lg font-black scale-105' };
+      case 20: return { bg: 'bg-blue-950/30 border-blue-800/40 text-blue-400 hover:bg-blue-950/50', chosen: 'bg-blue-500 border-blue-400 text-white shadow-lg font-black scale-105' };
+      case 30: return { bg: 'bg-amber-950/30 border-amber-800/40 text-amber-400 hover:bg-amber-950/50', chosen: 'bg-amber-500 border-amber-400 text-white shadow-lg font-black scale-105' };
+      case 50: return { bg: 'bg-indigo-950/30 border-indigo-800/40 text-indigo-400 hover:bg-indigo-950/50', chosen: 'bg-indigo-500 border-indigo-400 text-white shadow-lg font-black scale-105' };
+      case 100: return { bg: 'bg-purple-950/30 border-purple-800/40 text-purple-400 hover:bg-purple-950/50', chosen: 'bg-purple-500 border-purple-400 text-white shadow-lg font-black scale-105' };
+      case 200: return { bg: 'bg-rose-950/30 border-rose-800/40 text-rose-400 hover:bg-rose-950/50', chosen: 'bg-rose-500 border-rose-400 text-white shadow-lg font-black scale-105' };
+      case 500: return { bg: 'bg-cyan-950/30 border-cyan-800/40 text-cyan-400 hover:bg-cyan-950/50', chosen: 'bg-cyan-500 border-cyan-400 text-white shadow-lg font-black scale-105' };
+      case 1000: return { bg: 'bg-orange-950/30 border-orange-800/40 text-orange-400 hover:bg-orange-950/50', chosen: 'bg-orange-500 border-orange-400 text-white shadow-lg font-black scale-105' };
+      default: return { bg: 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-850', chosen: 'bg-zinc-100 border-zinc-350 text-slate-950 shadow-lg font-black scale-105' };
     }
   };
 
@@ -473,8 +473,8 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
       return 'bg-red-600 border-red-500 text-white font-black shadow-md cursor-not-allowed';
     }
     
-    // Beautiful clean white-adjacent button for gorgeous contrast and consistency
-    return 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50 hover:border-slate-400 shadow-sm transition-all duration-200';
+    // Beautiful clean dark blue button for gorgeous contrast and consistency
+    return 'bg-[#13222e] border border-[#203646] text-zinc-300 hover:bg-[#1a2e3e] hover:text-white hover:border-[#2e4c64] shadow-sm transition-all duration-200';
   };
 
   // Uniform custom styling for play squares matching the card selector exactly
@@ -501,31 +501,31 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
     : 40;
 
   return (
-    <div className="flex justify-center items-center w-full min-h-screen py-4 px-4 bg-[#f8fafc] bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.03),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.03),transparent_45%)] relative select-none overflow-hidden">
+    <div className="flex justify-center items-center w-full min-h-screen py-4 px-4 bg-[#030c11] bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.06),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.05),transparent_45%)] relative select-none overflow-hidden">
       
       {/* Decorative ambient background lights for a premium professional look */}
-      <div className="absolute top-1/4 left-1/10 w-80 h-80 rounded-full bg-emerald-500/3 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/10 w-96 h-96 rounded-full bg-sky-500/3 blur-[140px] pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-indigo-500/2 blur-[180px] pointer-events-none" />
+      <div className="absolute top-1/4 left-1/10 w-80 h-80 rounded-full bg-emerald-500/5 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/10 w-96 h-96 rounded-full bg-sky-500/5 blur-[140px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-indigo-500/3 blur-[180px] pointer-events-none" />
       
       {/* Confetti Celebration overlay */}
       {confettiActive && (
-        <div className="absolute pointer-events-none z-50 animate-bounce text-center text-3xl md:text-4xl text-amber-500 font-black">
+        <div className="absolute pointer-events-none z-50 animate-bounce text-center text-3xl md:text-4xl text-amber-400 font-black">
           🎉✨🏆 BINGO! WINNER! 🏆✨🎉
         </div>
       )}
 
-      {/* Smartphone Casing container (Premium metallic silver design) */}
-      <div className="relative mx-auto w-full max-w-[420px] bg-slate-200 border-[12px] border-slate-300 rounded-[52px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] overflow-hidden flex flex-col min-h-[780px]">
+      {/* Smartphone Casing container (Premium metallic dark titanium design) */}
+      <div className="relative mx-auto w-full max-w-[420px] bg-[#0d1e27] border-[12px] border-[#1a3240] rounded-[52px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col min-h-[780px]">
           
           {/* Smartphone Ear Speaker & Camera Notch */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-32 bg-slate-300 rounded-b-2xl z-50 flex items-center justify-center gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-slate-500" />
-            <div className="w-12 h-1 bg-slate-400 rounded-full" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-32 bg-[#1a3240] rounded-b-2xl z-50 flex items-center justify-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+            <div className="w-12 h-1 bg-slate-600 rounded-full" />
           </div>
 
-          {/* Smartphone Screen Inner content (Polished white-adjacent canvas) */}
-          <div className="flex-1 flex flex-col text-slate-800 pt-6 relative select-none font-sans bg-[#f8fafc]">
+          {/* Smartphone Screen Inner content (Polished deep dark canvas) */}
+          <div className="flex-1 flex flex-col text-zinc-100 pt-6 relative select-none font-sans bg-[#06131c]">
             
             {/* PROFILES MANAGER / SIMULATOR OVERLAY DIALOG */}
             <AnimatePresence>
@@ -534,19 +534,19 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                   initial={{ opacity: 0, y: 100 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 100 }}
-                  className="absolute inset-0 bg-white/98 backdrop-blur-md z-50 flex flex-col p-5 justify-between font-sans text-slate-800"
+                  className="absolute inset-0 bg-[#06131cb8] backdrop-blur-md z-50 flex flex-col p-5 justify-between font-sans text-zinc-100"
                 >
                   <div className="space-y-4">
                     {/* Modal Header */}
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
                       <div className="flex items-center gap-2">
                         <User size={18} className="text-orange-500" />
-                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">የተጫዋች መገለጫ (Profiles)</h3>
+                        <h3 className="text-sm font-black text-zinc-100 uppercase tracking-tight">የተጫዋች መገለጫ (Profiles)</h3>
                       </div>
                       <button
                         type="button"
                         onClick={() => setShowProfileModal(false)}
-                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition"
+                        className="p-1 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100 transition"
                       >
                         <X size={16} />
                       </button>
@@ -603,7 +603,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                           placeholder="ሙሉ ስም (ለምሳሌ፡ አስቴር)"
                           value={customName}
                           onChange={e => setCustomName(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium"
+                          className="w-full bg-[#101f2b] border border-[#1d3546] focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none font-medium"
                         />
                         <div className="grid grid-cols-2 gap-2">
                           <input
@@ -612,7 +612,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                             placeholder="የቴሌግራም ዩዘር"
                             value={customUsername}
                             onChange={e => setCustomUsername(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium"
+                            className="w-full bg-[#101f2b] border border-[#1d3546] focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none font-medium"
                           />
                           <input
                             type="number"
@@ -620,12 +620,12 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                             placeholder="ባላንስ (Birr)"
                             value={customBalance}
                             onChange={e => setCustomBalance(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium font-mono"
+                            className="w-full bg-[#101f2b] border border-[#1d3546] focus:border-orange-500 rounded-xl py-2 px-3 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none font-medium font-mono"
                           />
                         </div>
                         <button
                           type="submit"
-                          className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-black rounded-xl transition shadow-md shadow-orange-500/10 flex items-center justify-center gap-1"
+                          className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 text-xs font-black rounded-xl transition shadow-md shadow-orange-500/10 flex items-center justify-center gap-1"
                         >
                           <Plus size={12} /> ተጫዋች ፍጠር (Add Player)
                         </button>
@@ -637,7 +637,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                     <button
                       type="button"
                       onClick={() => setShowProfileModal(false)}
-                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl transition"
+                      className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 text-zinc-300 text-xs font-bold rounded-xl transition"
                     >
                       ተመለስ (Close)
                     </button>
@@ -647,7 +647,7 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
             </AnimatePresence>
 
             {/* Top Stat/Status Bar */}
-            <div className="px-5 py-2 flex justify-between items-center text-[10px] text-slate-500 font-semibold border-b border-slate-200 bg-white">
+            <div className="px-5 py-2 flex justify-between items-center text-[10px] text-zinc-400 font-semibold border-b border-zinc-800 bg-[#08131a]">
               <span 
                 className={`font-mono select-none ${onUnlockAdmin ? 'cursor-pointer active:opacity-60 transition-opacity' : ''}`}
                 onClick={onUnlockAdmin}
@@ -698,21 +698,21 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
             {/* SCREEN CONDITIONAL ROUTER */}
             {(!activePlayerInGame || isAddingAnotherCard) ? (
               /* MULTI-STEP PRE-GAME WIZARD FLOW (User requested) */
-              <div className="flex-1 flex flex-col justify-between bg-gradient-to-b from-[#f8fafc] to-[#f1f5f9] overflow-y-auto custom-scrollbar">
+              <div className="flex-1 flex flex-col justify-between bg-gradient-to-b from-[#08131a] to-[#04090d] overflow-y-auto custom-scrollbar">
                 
                 {/* 1. Header Logo (Consistent across all pre-game screens) */}
-                <div className="text-center py-4 shrink-0 border-b border-slate-200 bg-white/90 backdrop-blur-md sticky top-0 z-20">
-                  <div className="flex items-center justify-center gap-1 text-2xl font-black tracking-tight text-slate-800 uppercase">
-                    <span className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center font-extrabold text-lg shadow-lg shadow-orange-500/20 mr-1">b</span>
+                <div className="text-center py-4 shrink-0 border-b border-zinc-800 bg-[#08131a]/95 backdrop-blur-md sticky top-0 z-20">
+                  <div className="flex items-center justify-center gap-1 text-2xl font-black tracking-tight text-zinc-100 uppercase">
+                    <span className="w-8 h-8 bg-orange-500 text-slate-950 rounded-full flex items-center justify-center font-extrabold text-lg shadow-lg shadow-orange-500/20 mr-1">b</span>
                     bela bingo / ቤላ ቢንጎ
                   </div>
-                  <p className="text-[9px] text-slate-500 tracking-wider uppercase mt-0.5">Ethiopian Mobile Bingo App</p>
+                  <p className="text-[9px] text-zinc-500 tracking-wider uppercase mt-0.5">Ethiopian Mobile Bingo App</p>
                   
                   {isAddingAnotherCard && (
                     <button
                       type="button"
                       onClick={() => setIsAddingAnotherCard(false)}
-                      className="mt-2.5 px-3.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-full text-[10px] font-extrabold transition-all inline-flex items-center gap-1 border border-red-200 shadow-sm"
+                      className="mt-2.5 px-3.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-full text-[10px] font-extrabold transition-all inline-flex items-center gap-1 border border-red-500/20 shadow-sm"
                     >
                       ✕ ወደ ጨዋታው ተመለስ (Back to Game)
                     </button>
@@ -1348,25 +1348,25 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
 
                 {/* Stats Pill boxes (5 rows layout matching the image top) */}
                 <div className="grid grid-cols-5 gap-1.5 my-2.5 select-none text-center">
-                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
-                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Games</div>
-                    <div className="text-[11px] font-black font-mono text-slate-800">1</div>
+                  <div className="bg-[#0c1a24] border border-[#1b3443] rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-zinc-500 uppercase font-semibold">Games</div>
+                    <div className="text-[11px] font-black font-mono text-zinc-300">1</div>
                   </div>
-                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
-                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Derash</div>
-                    <div className="text-[11px] font-black font-mono text-amber-600">{derashPrize}</div>
+                  <div className="bg-[#0c1a24] border border-[#1b3443] rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-zinc-500 uppercase font-semibold">Derash</div>
+                    <div className="text-[11px] font-black font-mono text-amber-400">{derashPrize}</div>
                   </div>
-                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
-                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Players</div>
-                    <div className="text-[11px] font-black font-mono text-slate-800">{game.players.length}</div>
+                  <div className="bg-[#0c1a24] border border-[#1b3443] rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-zinc-500 uppercase font-semibold">Players</div>
+                    <div className="text-[11px] font-black font-mono text-zinc-300">{game.players.length}</div>
                   </div>
-                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
-                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Bet</div>
-                    <div className="text-[11px] font-black font-mono text-slate-800">{game.betAmount}</div>
+                  <div className="bg-[#0c1a24] border border-[#1b3443] rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-zinc-500 uppercase font-semibold">Bet</div>
+                    <div className="text-[11px] font-black font-mono text-zinc-300">{game.betAmount}</div>
                   </div>
-                  <div className="bg-white border border-slate-200 rounded-xl py-1 px-1 shadow-sm">
-                    <div className="text-[8px] text-slate-500 uppercase font-semibold">Call</div>
-                    <div className="text-[11px] font-black font-mono text-slate-800">{game.drawnNumbers.length}</div>
+                  <div className="bg-[#0c1a24] border border-[#1b3443] rounded-xl py-1 px-1 shadow-sm">
+                    <div className="text-[8px] text-zinc-500 uppercase font-semibold">Call</div>
+                    <div className="text-[11px] font-black font-mono text-zinc-300">{game.drawnNumbers.length}</div>
                   </div>
                 </div>
 
@@ -1374,10 +1374,10 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                 <div className="grid grid-cols-12 gap-2 flex-1 items-stretch select-none">
                   
                   {/* LEFT COLUMN: 75-NUMBER TABLE (Span 5) */}
-                  <div className="col-span-5 bg-white border border-slate-200 rounded-2xl p-2 flex flex-col gap-1 justify-between shadow-sm">
+                  <div className="col-span-5 bg-[#0c1a24] border border-[#1b3443] rounded-2xl p-2 flex flex-col gap-1 justify-between shadow-sm">
                     
                     {/* B I N G O Header Row */}
-                    <div className="grid grid-cols-5 gap-0.5 text-center font-sans pb-1.5 border-b border-slate-100">
+                    <div className="grid grid-cols-5 gap-0.5 text-center font-sans pb-1.5 border-b border-[#1b3443]/60">
                       <div className="w-5 h-5 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center mx-auto shadow-sm">B</div>
                       <div className="w-5 h-5 rounded-full bg-blue-500 text-white text-[9px] font-black flex items-center justify-center mx-auto shadow-sm">I</div>
                       <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center mx-auto shadow-sm">N</div>
@@ -1394,11 +1394,11 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                           const isDrawn = game.drawnNumbers.includes(num);
                           const isLastDrawn = game.drawnNumbers.length > 0 && game.drawnNumbers[game.drawnNumbers.length - 1] === num;
 
-                          let cellStyle = 'bg-slate-50 border-slate-100 text-slate-400 font-medium';
+                          let cellStyle = 'bg-[#152532] border border-[#233a4c] text-zinc-500 font-semibold';
                           if (isLastDrawn) {
                             cellStyle = 'bg-red-500 border-red-400 text-white font-extrabold animate-pulse shadow-md shadow-red-500/30';
                           } else if (isDrawn) {
-                            cellStyle = 'bg-[#10b981] border-[#34d399] text-white font-extrabold';
+                            cellStyle = 'bg-emerald-500 border-emerald-400 text-white font-extrabold';
                           }
 
                           return (
@@ -1418,14 +1418,14 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                   <div className="col-span-7 flex flex-col gap-2 justify-between">
                     
                      {/* Countdown indicator */}
-                    <div className="bg-white border border-slate-200 rounded-xl px-2.5 py-1 flex items-center justify-between text-[10px] font-bold text-slate-600 shadow-sm">
+                    <div className="bg-[#0c1a24] border border-[#1b3443] rounded-xl px-2.5 py-1 flex items-center justify-between text-[10px] font-bold text-zinc-300 shadow-sm">
                       <span>ማብቂያ ጊዜ (Time Left)</span>
                       {game.isOvertime ? (
-                        <span className="font-mono text-rose-600 font-black animate-pulse text-[9px] bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded-lg">
+                        <span className="font-mono text-rose-400 font-black animate-pulse text-[9px] bg-rose-950/20 border border-rose-900/30 px-1.5 py-0.5 rounded-lg">
                           ተጨማሪ እጣ (Overtime)
                         </span>
                       ) : (
-                        <span className="font-mono text-rose-600 font-black animate-pulse">
+                        <span className="font-mono text-rose-400 font-black animate-pulse">
                           {game.gameTimeLeft !== undefined ? `${game.gameTimeLeft}s` : '90s'}
                         </span>
                       )}
@@ -1470,18 +1470,18 @@ export default function PlayerMobileView({ game, onRefresh, profiles, isTelegram
                     </div>
 
                     {/* 5x5 CARTELA (BINGO CARD) */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-2 flex flex-col gap-1 shadow-inner flex-1 justify-between shadow-sm">
+                    <div className="bg-[#0c1a24] border border-[#1b3443] rounded-2xl p-2 flex flex-col gap-1 shadow-inner flex-1 justify-between shadow-sm">
                       
                       {/* Winning Patterns HUD */}
-                      <div className="flex gap-1.5 justify-center items-center py-1 border-b border-slate-100 mb-1 select-none overflow-x-auto custom-scrollbar shrink-0">
-                        <span className="text-[7.5px] font-bold text-slate-500 uppercase tracking-wider shrink-0">የአሸናፊነት ቅጦች (PATTERNS):</span>
-                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
+                      <div className="flex gap-1.5 justify-center items-center py-1 border-b border-[#1b3443]/60 mb-1 select-none overflow-x-auto custom-scrollbar shrink-0">
+                        <span className="text-[7.5px] font-bold text-zinc-500 uppercase tracking-wider shrink-0">የአሸናፊነት ቅጦች (PATTERNS):</span>
+                        <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
                           ➖ መስመር (Line)
                         </span>
-                        <span className="bg-amber-50 text-amber-700 border border-amber-100 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
+                        <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
                           📐 ሰያፍ (Diagonal)
                         </span>
-                        <span className="bg-purple-50 text-purple-700 border border-purple-100 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
+                        <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[7px] px-1.5 py-0.5 rounded-full font-bold shrink-0">
                           ⭐️ ማዕዘን (Corners)
                         </span>
                       </div>

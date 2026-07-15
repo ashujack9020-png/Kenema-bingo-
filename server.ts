@@ -179,6 +179,7 @@ interface BotSettings {
   referralBonus: number;
   forceSharedPreUrl?: boolean;
   botMode?: 'polling' | 'webhook' | 'disabled';
+  productionWebhookUrl?: string;
 }
 
 let botSettings: BotSettings = {
@@ -190,10 +191,14 @@ let botSettings: BotSettings = {
   welcomeBonus: 10,
   referralBonus: 10,
   forceSharedPreUrl: true,
-  botMode: process.env.NODE_ENV === 'production' ? 'webhook' : 'disabled'
+  botMode: process.env.NODE_ENV === 'production' ? 'webhook' : 'disabled',
+  productionWebhookUrl: '',
 };
 
 const SETTINGS_FILE = path.join(process.cwd(), 'bot_settings_persistent.json');
+const PROFILES_FILE = path.join(process.cwd(), 'user_profiles_persistent.json');
+const WITHDRAWALS_FILE = path.join(process.cwd(), 'withdraw_requests_persistent.json');
+const DEPOSITS_FILE = path.join(process.cwd(), 'deposit_requests_persistent.json');
 
 function loadSettings() {
   try {
@@ -222,8 +227,73 @@ function saveSettings() {
   }
 }
 
-// Initial settings load
+function saveProfiles() {
+  try {
+    const profilesObj = Object.fromEntries(userProfiles);
+    fs.writeFileSync(PROFILES_FILE, JSON.stringify(profilesObj, null, 2), 'utf8');
+  } catch (err: any) {
+    console.error('Failed to save persistent profiles:', err.message);
+  }
+}
+
+function loadProfiles() {
+  try {
+    if (fs.existsSync(PROFILES_FILE)) {
+      const data = fs.readFileSync(PROFILES_FILE, 'utf8');
+      const loaded = JSON.parse(data);
+      for (const [key, val] of Object.entries(loaded)) {
+        userProfiles.set(key, val as UserProfile);
+      }
+      console.log('Persistent profiles loaded:', userProfiles.size);
+    }
+  } catch (err: any) {
+    console.error('Failed to load persistent profiles:', err.message);
+  }
+}
+
+function saveWithdrawals() {
+  try {
+    fs.writeFileSync(WITHDRAWALS_FILE, JSON.stringify(withdrawRequests, null, 2), 'utf8');
+  } catch (err: any) {
+    console.error('Failed to save withdrawals:', err.message);
+  }
+}
+
+function loadWithdrawals() {
+  try {
+    if (fs.existsSync(WITHDRAWALS_FILE)) {
+      const data = fs.readFileSync(WITHDRAWALS_FILE, 'utf8');
+      withdrawRequests = JSON.parse(data);
+      console.log('Persistent withdrawals loaded:', withdrawRequests.length);
+    }
+  } catch (err: any) {
+    console.error('Failed to load withdrawals:', err.message);
+  }
+}
+
+function saveDeposits() {
+  try {
+    fs.writeFileSync(DEPOSITS_FILE, JSON.stringify(depositRequests, null, 2), 'utf8');
+  } catch (err: any) {
+    console.error('Failed to save deposits:', err.message);
+  }
+}
+
+function loadDeposits() {
+  try {
+    if (fs.existsSync(DEPOSITS_FILE)) {
+      const data = fs.readFileSync(DEPOSITS_FILE, 'utf8');
+      depositRequests = JSON.parse(data);
+      console.log('Persistent deposits loaded:', depositRequests.length);
+    }
+  } catch (err: any) {
+    console.error('Failed to load deposits:', err.message);
+  }
+}
+
+// Initial settings and profiles load
 loadSettings();
+loadProfiles();
 
 function getUserProfile(chatId: string, username: string, firstName: string): UserProfile {
   let profile = userProfiles.get(chatId);
@@ -240,6 +310,7 @@ function getUserProfile(chatId: string, username: string, firstName: string): Us
       monthlyWins: 0,
     };
     userProfiles.set(chatId, profile);
+    saveProfiles();
   }
   return profile;
 }
@@ -297,6 +368,10 @@ let depositRequests: DepositRequest[] = [
     status: 'pending',
   },
 ];
+
+// Load withdrawals and deposits from backup files
+loadWithdrawals();
+loadDeposits();
 
 // In-memory game state
 let gameState: BingoGame = {
@@ -725,12 +800,25 @@ async function registerWebhookIfNeeded(hostUrl: string) {
   if (!botConfig.token) return;
   if (botSettings.botMode !== 'webhook') return;
   
+  // If productionWebhookUrl is specified, use it as priority instead of hostUrl!
+  let effectiveHost = (botSettings.productionWebhookUrl && botSettings.productionWebhookUrl.trim()) 
+    ? botSettings.productionWebhookUrl.trim() 
+    : hostUrl;
+
+  // Ensure it has https:// prefix
+  if (effectiveHost && !effectiveHost.startsWith('http://') && !effectiveHost.startsWith('https://')) {
+    effectiveHost = `https://${effectiveHost}`;
+  }
+  if (effectiveHost && effectiveHost.startsWith('http://')) {
+    effectiveHost = effectiveHost.replace('http://', 'https://');
+  }
+
   // Skip local addresses
-  if (!hostUrl || hostUrl.includes('localhost') || hostUrl.includes('127.0.0.1')) {
+  if (!effectiveHost || effectiveHost.includes('localhost') || effectiveHost.includes('127.0.0.1')) {
     return;
   }
   
-  const targetWebhookUrl = `${hostUrl}/api/telegram-webhook`;
+  const targetWebhookUrl = `${effectiveHost}/api/telegram-webhook`;
   if (lastRegisteredWebhookUrl === targetWebhookUrl) {
     return; // Already registered in this session
   }
@@ -760,7 +848,7 @@ async function registerWebhookIfNeeded(hostUrl: string) {
           menu_button: {
             type: 'web_app',
             text: '🎯 Play Bingo 🚀',
-            web_app: { url: `${hostUrl}` } // use the correct resolved host url!
+            web_app: { url: `${effectiveHost}` } // use the correct resolved effectiveHost!
           }
         });
       } catch (menuErr: any) {
@@ -835,6 +923,8 @@ async function handleTelegramUpdate(update: any) {
           }
         }
 
+        saveProfiles();
+
         await telegramRequest('sendMessage', {
           chat_id: chat.id.toString(),
           text: `✅ <b>ምዝገባዎ በተሳካ ሁኔታ ተጠናቋል!</b>\n\n${welcomeBonusMsg}🏆 ዋና ማውጫ። የፈለጉትን ምርጫ ይጫኑ👇`,
@@ -885,6 +975,7 @@ async function handleTelegramUpdate(update: any) {
           status: 'pending',
         };
         depositRequests.unshift(newDep);
+        saveDeposits();
 
         addLog('incoming', username, `[Sent Photo: ${amount} Birr via ${method}, Txn ID: ${txnId}]`);
 
@@ -1131,6 +1222,9 @@ async function processCommand(chatId: string, username: string, firstName: strin
         };
 
         withdrawRequests.unshift(newWd);
+        saveWithdrawals();
+        saveProfiles();
+
         userWithdrawalStates.delete(chatId);
 
         addLog('system', 'Withdrawal', `Withdrawal Requested: ${firstName} (@${username}) requested ${amount} Birr to ${wdState.bankName}`);
@@ -1291,6 +1385,7 @@ async function processCommand(chatId: string, username: string, firstName: strin
 
     profile.balance += 10.0;
     profile.lastGiftClaim = now;
+    saveProfiles();
     addLog('system', 'Gift', `Gift Claimed: ${firstName} (@${username}) claimed 10 Birr gift.`);
 
     const giftMsg = `🎉 <b>እንኳን ደስ አለዎት ${firstName}!</b> 🎉\n` +
@@ -1472,6 +1567,7 @@ async function processCommand(chatId: string, username: string, firstName: strin
 
     // Deduct entry fee
     profile.balance -= gameState.betAmount;
+    saveProfiles();
 
     const cardNumber = requestedCardNumber !== null ? requestedCardNumber : getAvailableCardNumber();
     const playerCard = generateBingoCard(cardNumber);
@@ -1556,6 +1652,7 @@ async function processCommand(chatId: string, username: string, firstName: strin
       if (index !== -1) {
         gameState.players.splice(index, 1);
         profile.balance += gameState.betAmount;
+        saveProfiles();
         updatePrizePool();
         addLog('system', 'Lobby', `Player ${firstName} left with Card #${targetCardNum}. Refunded ${gameState.betAmount} Birr.`);
         const msg = `👋 <b>${firstName}</b> ከቢንጎ ካርታ ቁጥር #${targetCardNum} ወጥተዋል። <code>${gameState.betAmount} Birr</code> ተመላሽ ተደርጓል`;
@@ -1571,6 +1668,7 @@ async function processCommand(chatId: string, username: string, firstName: strin
     const count = players.length;
     gameState.players = gameState.players.filter(p => p.id !== chatId);
     profile.balance += gameState.betAmount * count;
+    saveProfiles();
     updatePrizePool();
 
     addLog('system', 'Lobby', `Player ${firstName} left the lobby (${count} cards). Refunded ${gameState.betAmount * count} Birr.`);
@@ -1626,6 +1724,7 @@ async function processCommand(chatId: string, username: string, firstName: strin
 
       profile.balance += winPrize;
       profile.totalWins = (profile.totalWins || 0) + 1;
+      saveProfiles();
 
       addLog('system', 'Winner', `🏆 BINGO! Player ${player.firstName} WON ${winPrize} Birr via ${checkResult.pattern}!`);
 
@@ -1676,6 +1775,7 @@ async function triggerBingoWin(player: Player, checkResult: { won: boolean; patt
   const profile = getUserProfile(player.id, player.username, player.firstName);
   profile.balance += winPrize;
   profile.totalWins = (profile.totalWins || 0) + 1;
+  saveProfiles();
 
   addLog('system', 'Winner', `🏆 BINGO! Player ${player.firstName} (@${player.username}) WON ${winPrize} Birr via ${checkResult.pattern}!`);
 
@@ -1970,7 +2070,7 @@ app.post('/api/telegram-webhook', async (req, res) => {
 
 // Update bot settings
 app.post('/api/config/settings', async (req, res) => {
-  const { telebirrNumber, telebirrName, cbeAccount, cbeName, contactUsername, welcomeBonus, referralBonus, forceSharedPreUrl, botMode } = req.body;
+  const { telebirrNumber, telebirrName, cbeAccount, cbeName, contactUsername, welcomeBonus, referralBonus, forceSharedPreUrl, botMode, productionWebhookUrl } = req.body;
   
   if (telebirrNumber !== undefined) botSettings.telebirrNumber = String(telebirrNumber);
   if (telebirrName !== undefined) botSettings.telebirrName = String(telebirrName);
@@ -1980,6 +2080,15 @@ app.post('/api/config/settings', async (req, res) => {
   if (welcomeBonus !== undefined) botSettings.welcomeBonus = Number(welcomeBonus);
   if (referralBonus !== undefined) botSettings.referralBonus = Number(referralBonus);
   if (forceSharedPreUrl !== undefined) botSettings.forceSharedPreUrl = Boolean(forceSharedPreUrl);
+  
+  if (productionWebhookUrl !== undefined) {
+    const oldUrl = botSettings.productionWebhookUrl;
+    botSettings.productionWebhookUrl = String(productionWebhookUrl);
+    if (botSettings.productionWebhookUrl !== oldUrl && botSettings.botMode === 'webhook') {
+      // Re-trigger webhook registration with the new URL!
+      registerWebhookIfNeeded(botSettings.productionWebhookUrl).catch(err => console.error('Failed to register webhook:', err));
+    }
+  }
   
   const oldMode = botSettings.botMode;
   if (botMode !== undefined && botMode !== oldMode) {
@@ -2050,6 +2159,9 @@ app.post('/api/deposits/:id/approve', async (req, res) => {
   const profile = getUserProfile(deposit.chatId, deposit.username, deposit.firstName);
   profile.balance += deposit.amount;
 
+  saveDeposits();
+  saveProfiles();
+
   addLog('system', 'Payment', `Approved ${deposit.amount} Birr deposit for ${deposit.firstName} (@${deposit.username}) via ${deposit.method}.`);
 
   // Notify user on Telegram
@@ -2085,6 +2197,8 @@ app.post('/api/deposits/:id/reject', async (req, res) => {
 
   deposit.status = 'rejected';
 
+  saveDeposits();
+
   addLog('system', 'Payment', `Rejected ${deposit.amount} Birr deposit for ${deposit.firstName} (@${deposit.username}).`);
 
   // Notify user on Telegram
@@ -2117,6 +2231,8 @@ app.post('/api/withdrawals/:id/approve', async (req, res) => {
   }
 
   withdraw.status = 'approved';
+
+  saveWithdrawals();
 
   addLog('system', 'Payment', `Approved withdrawal of ${withdraw.amount} Birr for ${withdraw.firstName} (@${withdraw.username}) to ${withdraw.bankName}.`);
 
@@ -2158,6 +2274,9 @@ app.post('/api/withdrawals/:id/reject', async (req, res) => {
   // Refund user's profile balance
   const profile = getUserProfile(withdraw.chatId, withdraw.username, withdraw.firstName);
   profile.balance += withdraw.amount;
+
+  saveWithdrawals();
+  saveProfiles();
 
   addLog('system', 'Payment', `Rejected withdrawal of ${withdraw.amount} Birr for ${withdraw.firstName} (@${withdraw.username}). Refunded to balance.`);
 
@@ -2213,6 +2332,7 @@ app.post('/api/game/simulate-deposit', (req, res) => {
   };
 
   depositRequests.unshift(newDep);
+  saveDeposits();
 
   addLog('incoming', username, `[Simulated Screenshot: ${amount} Birr via ${selectedMethod}]`);
   addLog('outgoing', 'Bot', `Reply to @${username}: የደረሰኝ ፎቶ ደርሶናል። አስተዳዳሪው ሲያረጋግጥ ሂሳብዎ ይሞላል።`);
@@ -2403,8 +2523,8 @@ if (botConfig.token) {
       console.error('Failed to auto-start Telegram Bot polling:', err.message);
     });
   } else if (botSettings.botMode === 'webhook') {
-    // If APP_URL is defined, register webhook on startup, else wait for dynamic incoming requests
-    const envAppUrl = process.env.APP_URL || lastKnownHost;
+    // If APP_URL is defined or productionWebhookUrl is specified, register webhook on startup, else wait for dynamic incoming requests
+    const envAppUrl = process.env.APP_URL || botSettings.productionWebhookUrl || lastKnownHost;
     if (envAppUrl && !envAppUrl.includes('localhost') && !envAppUrl.includes('127.0.0.1')) {
       registerWebhookIfNeeded(envAppUrl).catch(err => {
         console.error('Failed to auto-register Telegram Webhook on startup:', err.message);

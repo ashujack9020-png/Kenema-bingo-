@@ -106,6 +106,7 @@ export interface BotSettings {
   referralBonus: number;
   forceSharedPreUrl?: boolean;
   botMode?: 'polling' | 'webhook' | 'disabled';
+  productionWebhookUrl?: string;
 }
 
 export interface AppState {

@@ -17,6 +17,7 @@ export default function BotSettingsPanel({ settings, onRefresh }: BotSettingsPan
   const [referralBonus, setReferralBonus] = useState(settings?.referralBonus ?? 10);
   const [forceSharedPreUrl, setForceSharedPreUrl] = useState(settings?.forceSharedPreUrl ?? true);
   const [botMode, setBotMode] = useState<'polling' | 'webhook' | 'disabled'>(settings?.botMode || 'polling');
+  const [productionWebhookUrl, setProductionWebhookUrl] = useState(settings?.productionWebhookUrl || '');
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -34,6 +35,7 @@ export default function BotSettingsPanel({ settings, onRefresh }: BotSettingsPan
       setReferralBonus(settings.referralBonus);
       setForceSharedPreUrl(settings.forceSharedPreUrl ?? true);
       setBotMode(settings.botMode || 'polling');
+      setProductionWebhookUrl(settings.productionWebhookUrl || '');
     }
   }, [settings]);
 
@@ -57,6 +59,7 @@ export default function BotSettingsPanel({ settings, onRefresh }: BotSettingsPan
           referralBonus: Number(referralBonus),
           forceSharedPreUrl,
           botMode,
+          productionWebhookUrl,
         }),
       });
 
@@ -329,6 +332,23 @@ export default function BotSettingsPanel({ settings, onRefresh }: BotSettingsPan
               <span className="text-[9px] opacity-70">ቦት ግንኙነት አጥፋ</span>
             </button>
           </div>
+        </div>
+
+        {/* Section 6: Lock Webhook Domain URL */}
+        <div className="p-4 bg-zinc-950 border border-zinc-850 rounded-2xl space-y-3">
+          <h3 className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+            <Settings2 size={13} className="text-sky-400" /> የዌብሁክ ሊንክ መቆለፊያ (Production Webhook URL Lock)
+          </h3>
+          <p className="text-[10px] text-zinc-500 leading-normal">
+            በ AI Studio እና በ Render መካከል የቴሌግራም ዌብሁክ መደበላለቅን ለመከላከል የ Render አድራሻዎን እዚህ ያስገቡ (ለምሳሌ <code>https://your-app.onrender.com</code>)። ይህ ሲሞላ ቦቱ ሁልጊዜ እዚያ ላይ ብቻ ይሰራል!
+          </p>
+          <input
+            type="url"
+            value={productionWebhookUrl}
+            onChange={(e) => setProductionWebhookUrl(e.target.value)}
+            placeholder="https://your-app.onrender.com"
+            className="w-full bg-[#0a0a0c] border border-zinc-800 focus:border-sky-500 rounded-xl py-2 px-3 text-xs focus:outline-none font-mono text-zinc-100"
+          />
         </div>
 
         {/* Error Messages */}
