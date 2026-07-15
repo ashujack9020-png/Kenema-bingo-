@@ -2375,7 +2375,21 @@ app.post('/api/config/token', async (req, res) => {
   addLog('system', 'Bot', 'New Telegram token registered. Initiating connection...');
   
   stopBotPolling();
-  await startBotPolling();
+  if (botSettings.botMode === 'webhook') {
+    const envAppUrl = process.env.APP_URL || botSettings.productionWebhookUrl || lastKnownHost;
+    if (envAppUrl && !envAppUrl.includes('localhost') && !envAppUrl.includes('127.0.0.1')) {
+      try {
+        await registerWebhookIfNeeded(envAppUrl);
+      } catch (err: any) {
+        console.error('Failed to register webhook on token update:', err.message);
+      }
+    } else {
+      botConfig.isActive = true;
+      botConfig.error = null;
+    }
+  } else {
+    await startBotPolling();
+  }
 
   if (botConfig.error) {
     res.status(400).json({ success: false, message: botConfig.error });
@@ -2543,7 +2557,7 @@ if (botConfig.token) {
     });
   } else if (botSettings.botMode === 'webhook') {
     // If APP_URL is defined or productionWebhookUrl is specified, register webhook on startup, else wait for dynamic incoming requests
-    const envAppUrl = process.env.APP_URL || botSettings.productionWebhookUrl || lastKnownHost;
+    const envAppUrl = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || botSettings.productionWebhookUrl || lastKnownHost;
     if (envAppUrl && !envAppUrl.includes('localhost') && !envAppUrl.includes('127.0.0.1')) {
       registerWebhookIfNeeded(envAppUrl).catch(err => {
         console.error('Failed to auto-register Telegram Webhook on startup:', err.message);
