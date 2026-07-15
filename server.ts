@@ -180,6 +180,7 @@ interface BotSettings {
   forceSharedPreUrl?: boolean;
   botMode?: 'polling' | 'webhook' | 'disabled';
   productionWebhookUrl?: string;
+  telegramBotToken?: string;
 }
 
 let botSettings: BotSettings = {
@@ -193,6 +194,7 @@ let botSettings: BotSettings = {
   forceSharedPreUrl: true,
   botMode: process.env.NODE_ENV === 'production' ? 'webhook' : 'disabled',
   productionWebhookUrl: '',
+  telegramBotToken: '',
 };
 
 const SETTINGS_FILE = path.join(process.cwd(), 'bot_settings_persistent.json');
@@ -207,6 +209,11 @@ function loadSettings() {
       const loaded = JSON.parse(data);
       botSettings = { ...botSettings, ...loaded };
       console.log('Persistent bot settings loaded:', botSettings);
+      
+      // If a persistent token exists and botConfig is not initialized, load it
+      if (botSettings.telegramBotToken && !botConfig.token) {
+        botConfig.token = botSettings.telegramBotToken;
+      }
     }
   } catch (err: any) {
     console.error('Failed to load persistent bot settings:', err.message);
@@ -2355,11 +2362,16 @@ app.post('/api/config/token', async (req, res) => {
     botConfig.token = '';
     botConfig.isActive = false;
     botConfig.error = 'Token removed';
+    botSettings.telegramBotToken = '';
+    saveSettings();
     addLog('system', 'Bot', 'Telegram Token removed by administrator.');
     return res.json({ success: true, message: 'Token removed' });
   }
 
-  botConfig.token = token.trim();
+  const trimmedToken = token.trim();
+  botConfig.token = trimmedToken;
+  botSettings.telegramBotToken = trimmedToken;
+  saveSettings();
   addLog('system', 'Bot', 'New Telegram token registered. Initiating connection...');
   
   stopBotPolling();
