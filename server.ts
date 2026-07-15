@@ -813,8 +813,15 @@ async function registerWebhookIfNeeded(hostUrl: string) {
     effectiveHost = effectiveHost.replace('http://', 'https://');
   }
 
-  // Skip local addresses
-  if (!effectiveHost || effectiveHost.includes('localhost') || effectiveHost.includes('127.0.0.1')) {
+  // Skip local addresses and AI Studio authenticated preview URLs
+  if (
+    !effectiveHost || 
+    effectiveHost.includes('localhost') || 
+    effectiveHost.includes('127.0.0.1') || 
+    effectiveHost.includes('ais-dev-') || 
+    effectiveHost.includes('ais-pre-') || 
+    effectiveHost.includes('europe-west1.run.app')
+  ) {
     return;
   }
   
